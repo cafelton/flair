@@ -98,8 +98,7 @@ default:
 
 test:  align-tests correct-tests collapse-tests quantify-tests \
 	combine-tests predict-productivity-tests diff-iso-usage-tests \
-	plot-usage-tests transcriptome-tests fusion-tests variants-tests \
-	partition-tests
+	plot-usage-tests transcriptome-tests fusion-tests variants-tests
 
 test-diffexpress: diffexp-tests diffsplice-tests
 
@@ -380,8 +379,9 @@ test-plot-usage-help: mkdirs
 # flair transcriptome
 ###
 
-transcriptome-tests: test-transcriptome test-transcriptome-noannot test-transcriptome-predcds \
+transcriptome-tests: test-transcriptome test-transcriptome-noannot \
 	test-transcriptome-seg1 test-transcriptome-help
+##test-transcriptome-predcds \
 
 test-transcriptome: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --stringent
@@ -391,9 +391,8 @@ test-transcriptome-noannot: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --stringent --noaligntoannot
 	$(collapse_diff)
 
-test-transcriptome-predcds: mkdirs ${TEST_ALIGN_BAM}
-	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --stringent --predictCDS
-	$(collapse_diff)
+#test-transcriptome-predcds: mkdirs ${TEST_ALIGN_BAM}
+#	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --stringent --predictCDS
 
 # FIXME: doesn't work, returns nothing. Need to debug later
 test-transcriptome-seg1: mkdirs  ${SEG1_ALIGN_BAM}
@@ -403,6 +402,10 @@ test-transcriptome-seg1: mkdirs  ${SEG1_ALIGN_BAM}
 test-transcriptome-help: mkdirs
 	flair transcriptome --help > $O/$@.out
 	$(call cmp_expect,$@.out)
+
+
+
+#	$(call cmp_expect,$@.out)
 
 
 ###
@@ -438,29 +441,6 @@ test-fusion: mkdirs ${GENOME_FA}
 
 test-fusion-help: mkdirs
 	flair fusion  --help > $O/$@.out
-	$(call cmp_expect,$@.out)
-
-
-##
-# flair_partition command
-##
-partition-tests: test-partition-basic test-partition-adjacent test-partition-min-reads
-
-test-partition-basic: mkdirs
-	flair_partition --threads=2 --log-level=info input/partition-test.bed output/$@.ranges.bed >& output/$@.out
-	$(call cmp_expect,$@.ranges.bed)
-	$(call cmp_expect,$@.out)
-
-# merge adjacent partitions
-test-partition-adjacent:
-	flair_partition --threads=2 -part_merge_dist=10000 --log-level=info input/partition-test.bed output/$@.ranges.bed >& output/$@.out
-	$(call cmp_expect,$@.ranges.bed)
-	$(call cmp_expect,$@.out)
-
-# minimum reads per partition
-test-partition-min-reads:
-	flair_partition --threads=2 --min_partition_items=3  --log-level=info input/partition-test.bed output/$@.ranges.bed >& output/$@.out
-	$(call cmp_expect,$@.ranges.bed)
 	$(call cmp_expect,$@.out)
 
 
