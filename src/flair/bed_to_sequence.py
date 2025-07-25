@@ -3,6 +3,7 @@ import sys, csv, os, argparse, pysam, subprocess
 import pysam
 import logging
 from flair import FlairInputDataError
+from flair.parse_iso_ids import IsoformInfo
 
 def main():
     parser = argparse.ArgumentParser(description='options',
@@ -72,29 +73,6 @@ def bed_to_sequence(query, genome, outfilename, isoform_haplotypes=False, vcfinp
                 vcfinput = vcfinput+'.gz'
             subprocess.check_call(['tabix', '-fp', 'vcf', vcfinput])
             vcf = pysam.VariantFile(vcfinput, 'r')
-
-    def split_iso_gene(iso_gene):
-        if '_' not in iso_gene:
-            return iso_gene, 'NA'
-        elif '_chr' in iso_gene:
-            splitchar = '_chr'
-        elif '_XM' in iso_gene:
-            splitchar = '_XM'
-        elif '_XR' in iso_gene:
-            splitchar = '_XR'
-        elif '_NM' in iso_gene:
-            splitchar = '_NM'
-        elif '_NR' in iso_gene:
-            splitchar = '_NR'
-        elif '_R2_' in iso_gene:
-            splitchar = '_R2_'
-        elif '_NC_' in iso_gene:
-            splitchar = '_NC_'
-        else:
-            splitchar = '_'
-        iso = iso_gene[:iso_gene.rfind(splitchar)]
-        gene = iso_gene[iso_gene.rfind(splitchar)+1:]
-        return iso, gene
 
 
     def get_sequence(entry, seq):
@@ -169,13 +147,13 @@ def bed_to_sequence(query, genome, outfilename, isoform_haplotypes=False, vcfinp
             v_to_add.reverse()  # add variants starting from the end in case of indels
             v_to_add_alt.reverse()
 
-            iso, gene = split_iso_gene(name)
-            iso = ':'.join(iso.split(':')[:-1])
-            name_ref, name_alt = '>' + iso+':0|1_'+gene, '>' + iso+':1|0_'+gene
-            names = [name_ref, name_alt]
-            pulled_seq = [add_variants_to_seq(v_to_add, seq, blockstarts, blocksizes, strand, entry[0], iso_name=name_ref),
+            isoinfo = IsoformInfo.parse_string(name)
+            iso_id = ':'.join(isoinfo.iso_id.split(':')[:-1])
+            iso_id_ref, iso_id_alt = '>' + iso_id+':0|1', '>' + iso_id+':1|0'
+            names = [str(IsoformInfo(iso_id_ref, isoinfo.iso_name, isoinfo.gene_id)), str(IsoformInfo(iso_id_alt, isoinfo.iso_name, isoinfo.gene_id))]
+            pulled_seq = [add_variants_to_seq(v_to_add, seq, blockstarts, blocksizes, strand, entry[0], iso_name=names[0]),
                           add_variants_to_seq(v_to_add_alt, seq, blockstarts, blocksizes, strand, entry[0],
-                                              iso_name=name_alt)]
+                                              iso_name=names[1])]
         else:
             pulled_seq = [seq]
             names = [name]
@@ -194,8 +172,8 @@ def bed_to_sequence(query, genome, outfilename, isoform_haplotypes=False, vcfinp
 
             name = entry[3]
             if vcfinput:
-                iso, gene = split_iso_gene(name)
-                iso = ':'.join(iso.split(':')[:-1])
+                isoinfo = IsoformInfo.parse_string(name)
+                iso = ':'.join(isoinfo.iso_id.split(':')[:-1]) # since the haplotype formatting changes, we output both haplotypes for each isoform the first time we see it
                 if iso not in seenisos:
                     names, pulled_seq = get_sequence_with_variants(entry, seq)
                     for i in range(len(pulled_seq)):

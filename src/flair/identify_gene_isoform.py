@@ -3,6 +3,7 @@ import sys
 import csv
 import os
 import argparse
+from flair.parse_iso_ids import IsoformInfo
 
 from flair.gtf_to_bed import get_iso_info
 
@@ -53,6 +54,7 @@ def get_junctions_bed12(line):
         return
     for b in range(len(starts)-1): # block
         junctions.add((starts[b]+sizes[b], starts[b+1]))
+    junctions = tuple(sorted(list(junctions)))
     return junctions
 
 
@@ -140,7 +142,8 @@ def identify_gene_isoform(gtf, outfilename, query, field_name='gene_id', proport
         for chrom in all_se:
             all_se[chrom] = sorted(list(all_se[chrom]), key=lambda x: x[0])
 
-    name_counts = {}  # to avoid redundant names
+    junction_counts = {}  # to avoid redundant names
+    isoIDcount = 1
     with open(outfilename, 'wt') as outfile:
         writer = csv.writer(outfile, delimiter='\t', lineterminator=os.linesep)
         for line in open(query):
@@ -150,97 +153,110 @@ def identify_gene_isoform(gtf, outfilename, query, field_name='gene_id', proport
             if ';' in name:
                 name = name[:name.find(';')]
 
+            transcript = None
             if chrom not in junc_to_tn:  # chrom not in reference file
-                if name not in name_counts:
-                    name_counts[name] = 0
-                else:
-                    name_counts[name] += 1
-                    name = name + '-' + str(name_counts[name])
-                noref = chrom + ':' + str(start)[:-3] + '000'
-                newname = name + '_' + noref
-                line[3] = newname
-                writer.writerow(line)
-                continue
-
-            gene_hits = {}
-            se_gene_tiebreaker = {}
-            if not junctions:
-                exon = (start, end)
-                i = bin_search(exon, all_se[chrom])
-                for e in all_se[chrom][i-2:i+2]:
-                    overlap = overlapping_bases(exon, e)
-                    if overlap:
-                        proportion = float(overlap)/(exon[1]-exon[0])  # base coverage of long-read isoform by the annotated isoform
-                        proportion2 = float(overlap)/(e[1]-e[0])  # base coverage of the annotated isoform by the long-read isoform
-                        if proportion > 0.5 and proportion2 > proportion_annotated_covered:
-                            if e[2] in gene_hits: # gene name
-                                if proportion <= gene_hits[e[2]]:
-                                    continue
-                            gene_hits[e[2]] = proportion
-                            se_gene_tiebreaker[e[2]] = proportion2
-            else:
-                for j in junctions:
-                    if j in junc_to_gene[chrom]:
-                        for gene in junc_to_gene[chrom][j]:
-                            if gene not in gene_hits:
-                                gene_hits[gene] = 0
-                            gene_hits[gene] += 1  # gene name, number of junctions this isoform shares with this gene
-
-            if not gene_hits:  # gene name will just be a chromosome locus
+                # if name not in name_counts:
+                #     name_counts[name] = 0
+                # else:
+                #     name_counts[name] += 1
+                #     name = name + '-' + str(name_counts[name])
                 gene = chrom + ':' + str(start)[:-3] + '000'
-            else:  # gene name will be whichever gene the entry has more shared junctions with
-                genes = sorted(gene_hits.items(), key=lambda x: x[1])  # sort by number of junctions shared with gene
-                if len(genes) > 1 and genes[-1][1] == genes[-2][1]: # tie, break by gene size
-                    genes = sorted(genes, key=lambda x: x[0])
-                    genes = sorted(genes, key=lambda x: x[1])
-                    if not junctions:
-                        g = genes[-1], se_gene_tiebreaker[genes[-1][0]]
-                        for i in reversed(range(len(genes)-1)):
-                            if genes[i][1] == g[0][1]:
-                                if se_gene_tiebreaker[genes[i][0]] > g[1]:
-                                    g = genes[i], se_gene_tiebreaker[genes[i][0]]
-                            else:
-                                break
-                        genes[-1] = g[0]
-                    else:
-                        g = genes[-1], len(gene_unique_juncs[genes[-1][0]])
-                        for i in reversed(range(len(genes)-1)):
-                            if genes[i][1] == g[0][1]:
-                                if len(gene_unique_juncs[genes[i][0]]) < g[1]:
-                                    g = genes[i], len(gene_unique_juncs[genes[i][0]])
-                            else:
-                                break
-                        genes[-1] = g[0]
-                gene = genes[-1][0]
-
-            transcript = ''
-            if junctions:
-                matches = set()
-                for j in junctions:
-                    if j in junc_to_tn[chrom]:
-                        matches.update(junc_to_tn[chrom][j])
-                for t in sorted(list(matches)):
-                    if tn_to_juncs[chrom][t] == junctions:
-                        transcript = t  # annotated transcript identified
-                        break
-            name = transcript if transcript and not gene_only else name
-
-            if gene_only:
-                newname = name + '_' + gene
-            elif name not in name_counts:
-                name_counts[name] = 0
-                if annotation_reliant:
-                    newname = name + '-0_' + gene
-                else:
-                    newname = name + '_' + gene
+                # newname = name + '_' + noref
+                # line[3] = newname
+                # writer.writerow(line)
+                # continue
             else:
-                name_counts[name] += 1
-                newname = name + '-' + str(name_counts[name]) + '_' + gene
+                gene_hits = {}
+                se_gene_tiebreaker = {}
+                if not junctions:
+                    exon = (start, end)
+                    i = bin_search(exon, all_se[chrom])
+                    for e in all_se[chrom][i-2:i+2]:
+                        overlap = overlapping_bases(exon, e)
+                        if overlap:
+                            proportion = float(overlap)/(exon[1]-exon[0])  # base coverage of long-read isoform by the annotated isoform
+                            proportion2 = float(overlap)/(e[1]-e[0])  # base coverage of the annotated isoform by the long-read isoform
+                            if proportion > 0.5 and proportion2 > proportion_annotated_covered:
+                                if e[2] in gene_hits: # gene name
+                                    if proportion <= gene_hits[e[2]]:
+                                        continue
+                                gene_hits[e[2]] = proportion
+                                se_gene_tiebreaker[e[2]] = proportion2
+                else:
+                    for j in junctions:
+                        if j in junc_to_gene[chrom]:
+                            for gene in junc_to_gene[chrom][j]:
+                                if gene not in gene_hits:
+                                    gene_hits[gene] = 0
+                                gene_hits[gene] += 1  # gene name, number of junctions this isoform shares with this gene
+
+                if not gene_hits:  # gene name will just be a chromosome locus
+                    gene = chrom + ':' + str(start)[:-3] + '000'
+                else:  # gene name will be whichever gene the entry has more shared junctions with
+                    genes = sorted(gene_hits.items(), key=lambda x: x[1])  # sort by number of junctions shared with gene
+                    if len(genes) > 1 and genes[-1][1] == genes[-2][1]: # tie, break by gene size
+                        genes = sorted(genes, key=lambda x: x[0])
+                        genes = sorted(genes, key=lambda x: x[1])
+                        if not junctions:
+                            g = genes[-1], se_gene_tiebreaker[genes[-1][0]]
+                            for i in reversed(range(len(genes)-1)):
+                                if genes[i][1] == g[0][1]:
+                                    if se_gene_tiebreaker[genes[i][0]] > g[1]:
+                                        g = genes[i], se_gene_tiebreaker[genes[i][0]]
+                                else:
+                                    break
+                            genes[-1] = g[0]
+                        else:
+                            g = genes[-1], len(gene_unique_juncs[genes[-1][0]])
+                            for i in reversed(range(len(genes)-1)):
+                                if genes[i][1] == g[0][1]:
+                                    if len(gene_unique_juncs[genes[i][0]]) < g[1]:
+                                        g = genes[i], len(gene_unique_juncs[genes[i][0]])
+                                else:
+                                    break
+                            genes[-1] = g[0]
+                    gene = genes[-1][0]
+
+                if junctions:
+                    matches = set()
+                    for j in junctions:
+                        if j in junc_to_tn[chrom]:
+                            matches.update(junc_to_tn[chrom][j])
+                    for t in sorted(list(matches)):
+                        if tn_to_juncs[chrom][t] == set(junctions):
+                            transcript = t  # annotated transcript identified
+                            break
+
+
+            if junctions:
+                if junctions not in junction_counts: junction_counts[junctions] = 1
+                myjcount = junction_counts[junctions]
+                junction_counts[junctions] += 1
+            else: myjcount = 1
+            # iso_id = f'FL:{isoIDcount}-{myjcount}'
+            # iso_name = transcript if transcript and not gene_only else iso_id
+
+            newname = str(IsoformInfo.parse_from_ids(gene, isoIDcount, myjcount, iso_name=transcript)) #str(IsoformInfo(iso_id, iso_name, gene))
+
+            # name = transcript if transcript and not gene_only else name
+            #
+            # if gene_only:
+            #     newname = name + '_' + gene
+            # elif name not in name_counts:
+            #     name_counts[name] = 0
+            #     if annotation_reliant:
+            #         newname = name + '-0_' + gene
+            #     else:
+            #         newname = name + '_' + gene
+            # else:
+            #     name_counts[name] += 1
+            #     newname = name + '-' + str(name_counts[name]) + '_' + gene
 
             line[3] = newname
             line[8] = "20,47,181" if transcript else "232,142,23" ##blue if annotated, orange if novel
             if line[9] == '1': line[8] = "242,208,17" #yellow if monoexon
             writer.writerow(line)
+            isoIDcount += 1
 
 if __name__ == "__main__":
     main()

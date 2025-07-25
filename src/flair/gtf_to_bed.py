@@ -3,6 +3,7 @@ import sys
 import csv
 import os
 import argparse
+from flair.parse_iso_ids import IsoformInfo
 
 def main():
     parser = argparse.ArgumentParser(description='''converts a gtf to a bed, depending on the output filename extension;
@@ -17,7 +18,7 @@ def main():
 
     gtf_to_bed(args.bed, args.gtf, args.include_gene)
 
-def write_bed_row(include_gene, iso_to_cds, prev_transcript, blockstarts, blocksizes, prev_gene, prev_chrom, prev_strand, writer):
+def write_bed_row(include_gene, iso_to_cds, prev_transcript, blockstarts, blocksizes, prev_gene, prev_chrom, prev_strand, writer, curr_count):
     blockcount = len(blockstarts)
     if blockcount > 1 and blockstarts[0] > blockstarts[1]:  # need to reverse exons
         blocksizes = blocksizes[::-1]
@@ -26,7 +27,8 @@ def write_bed_row(include_gene, iso_to_cds, prev_transcript, blockstarts, blocks
     tstart, tend = blockstarts[0], blockstarts[-1] + blocksizes[-1]  # target (e.g. chrom)
     qsize = sum(blocksizes)  # query (e.g. transcript)
     if include_gene:
-        qname = prev_transcript+'_'+prev_gene
+
+        qname = str(IsoformInfo.parse_from_ids(prev_gene, curr_count, ends_id=1, tag='ANNOT', iso_name=prev_transcript))#f'ANNOT:{curr_count}-1|' + prev_transcript+'|'+prev_gene
     else:
         qname = prev_transcript
 
@@ -66,7 +68,7 @@ def get_iso_info(gtf, adjustpos = True):
                     iso_to_exons[this_transcript] = []
                     prev_gene = line[8][line[8].find('gene_id') + 9:]
                     prev_gene = prev_gene[:prev_gene.find('"')]
-                    prev_gene = prev_gene.replace('_', '-')
+                    # prev_gene = prev_gene.replace('_', '-')
                     iso_to_info[this_transcript] = (chrom, strand, prev_gene)
                 iso_to_exons[this_transcript].append((start, end))
     return iso_to_info, iso_to_exons, iso_to_cds
@@ -79,13 +81,14 @@ def gtf_to_bed(outputfile, gtf, include_gene=False):
         iso_to_info, iso_to_exons, iso_to_cds = get_iso_info(gtf)
 
 
+        c = 1
         for this_transcript in iso_to_exons:
             chrom, strand, gene = iso_to_info[this_transcript]
             exons = sorted(iso_to_exons[this_transcript])
             blockstarts = [x[0] for x in exons]
             blocksizes = [x[1]-x[0] for x in exons]
-
-            write_bed_row(include_gene, iso_to_cds, this_transcript, blockstarts, blocksizes, gene, chrom, strand, writer)
+            write_bed_row(include_gene, iso_to_cds, this_transcript, blockstarts, blocksizes, gene, chrom, strand, writer, c)
+            c += 1
 
 
 

@@ -378,7 +378,9 @@ def collapse(genomic_range='', corrected_reads=''):
                 annotation=args.output+'annotated_transcripts.supported.bed',
                 map_a=args.output+'annotated_transcripts.isoform.read.map.txt',
                 outputfile=filter_output,
-                new_map=args.output+'combined.isoform.read.map.txt')
+                wiggle=args.end_window,
+                new_map=args.output+'combined.isoform.read.map.txt',
+                filtertype=args.filter)
         os.rename(filter_output, mc_output)
         intermediate += [args.output+'annotated_transcripts.isoform.read.map.txt',
                          args.output + 'annotated_transcripts.alignment.counts', count_file]

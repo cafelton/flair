@@ -16,6 +16,7 @@ import multiprocessing as mp
 import time
 from collections import Counter
 from flair import FlairInputDataError
+from flair.parse_iso_ids import IsoformInfo
 
 
 # export PATH="/private/groups/brookslab/cafelton/git-flair/flair/bin:/private/groups/brookslab/cafelton/git-flair/flair/src/flair:$PATH"
@@ -250,7 +251,7 @@ def correctsingleread(bedread, intervalTree, junctionBoundaryDict):
 
 
 def getrgb(name, strand, junclen):
-    if name[:4] == 'ENST':
+    if type(name) == IsoformInfo and name.has_iso_name:
         return '3,28,252'
     elif junclen == 0:
         return "99,99,99"
@@ -563,13 +564,16 @@ def identify_good_match_to_annot(args, tempprefix, thischrom, annottranscripttoe
         transcripttostrand = {}
         with open(tempprefix + '.annotated_transcripts.bed', 'w') as annotbed, open(
                 tempprefix + '.annotated_transcripts.fa', 'w') as annotfa:
+            c = 0
             for transcript, gene, strand in alltranscripts:
                 transcripttostrand[(transcript, gene)] = strand
                 exons = annottranscripttoexons[(transcript, gene)]
                 start, end = exons[0][0], exons[-1][1]
                 estarts = [x[0] - start for x in exons]
                 esizes = [x[1] - x[0] for x in exons]
-                bedline = [thischrom, start, end, transcript + '|' + gene, '.', strand, start, end, '0', len(exons),
+
+                annotname = str(IsoformInfo.parse_from_ids(gene, c, ends_id=1, tag='ANNOT', iso_name=transcript))
+                bedline = [thischrom, start, end, annotname, '.', strand, start, end, '0', len(exons),
                            ','.join([str(x) for x in esizes]), ','.join([str(x) for x in estarts])]
                 if strand == '-':
                     exons = exons[::-1]
@@ -580,8 +584,9 @@ def identify_good_match_to_annot(args, tempprefix, thischrom, annottranscripttoe
                         thisexonseq = revcomp(thisexonseq)
                     exonseq.append(thisexonseq)
                 annotbed.write('\t'.join([str(x) for x in bedline]) + '\n')
-                annotfa.write('>' + transcript + '|' + gene + '\n')
+                annotfa.write('>' + annotname + '\n')
                 annotfa.write(''.join(exonseq) + '\n')
+                c += 1
         transcriptomealignandcount(args, tempprefix + '.reads.fasta',
                                    tempprefix + '.annotated_transcripts.fa',
                                    tempprefix + '.annotated_transcripts.bed',
@@ -594,14 +599,15 @@ def identify_good_match_to_annot(args, tempprefix, thischrom, annottranscripttoe
                 reads = reads.split(',')
                 goodaligntoannot.extend(reads)
                 if len(reads) >= args.support:
-                    transcript, gene = striso.split('|')
+                    isoinfo = IsoformInfo.parse_string(striso)
+                    transcript, gene = isoinfo.iso_name, isoinfo.gene_id
                     if (transcript, gene) in annottranscripttoexons:
                         exons = annottranscripttoexons[(transcript, gene)]
                         start, end = exons[0][0], exons[-1][1]
                         estarts = [x[0] - start for x in exons]
                         esizes = [x[1] - x[0] for x in exons]
                         strand = transcripttostrand[(transcript, gene)]
-                        bedline = [thischrom, start, end, transcript + '|' + gene,
+                        bedline = [thischrom, start, end, striso,
                                    len(reads), strand, start, end, '0',
                                    len(exons), ','.join([str(x) for x in esizes]), ','.join([str(x) for x in estarts])]
                         annotbed.write('\t'.join([str(x) for x in bedline]) + '\n')
@@ -887,7 +893,7 @@ def getgenenamesandwritefirstpass(tempprefix, thischrom, firstpass, juncstotrans
         for isoname in firstpass:
             thisiso = firstpass[isoname]
             # Adjust name based on annotation
-            transcriptID, transcriptName = tempprefix.split('/')[-1] + 'tmpnovel' + str(c), ''
+            transcriptName = None #tempprefix.split('/')[-1] + 'tmpnovel' + str(c),
             thisgene = thischrom + ':' + str(round(thisiso.start, -3)) #thischrom.replace('_', '-')
             if thisiso.juncs != () and thisiso.juncs in juncstotranscript:
                 transcriptName, thisgene = juncstotranscript[thisiso.juncs]
@@ -905,48 +911,49 @@ def getgenenamesandwritefirstpass(tempprefix, thischrom, firstpass, juncstotrans
                 if gene_hits:
                     sortedgenes = sorted(gene_hits.items(), key=lambda x: x[1], reverse=True)
                     thisgene = sortedgenes[0][0]
-            thisiso.name = transcriptID + '|' + transcriptName + '|' + thisgene
+            thisiso.name = str(IsoformInfo.parse_from_ids(thisgene, c, ends_id=1, tag='NOVEL' + tempprefix.split('/')[-1], iso_name=transcriptName)) #transcriptID + '|' + transcriptName + '|' + thisgene
             isoout.write('\t'.join(thisiso.getbedline()) + '\n')
             seqout.write('>' + thisiso.name + '\n')
             seqout.write(thisiso.getsequence(genome) + '\n')
             c += 1
 
 
-def getisogenefromname(isogene):
-    iso = '|'.join(isogene.split('|')[:-1])
-    gene = isogene.split('|')[-1]
-    return iso, gene
+# def getisogenefromname(isogene):
+#     iso = '|'.join(isogene.split('|')[:-1])
+#     gene = isogene.split('|')[-1]
+#     return iso, gene
 
 
-def processdetectedisos(args, mapfile, bedfile, marker, genetojuncstoends):
+def processdetectedisos(args, mapfile, bedfile, genetojuncstoends):
     ogisotoreads = {}
     for line in open(mapfile):
         isogene, reads = line.rstrip().split('\t', 1)
         reads = reads.split(',')
         support = len(reads)
         if support >= args.support:
-            iso, gene = getisogenefromname(isogene)
-            isoid = (marker, iso)
-            ogisotoreads[isoid] = reads
+            # iso, gene = getisogenefromname(isogene)
+            # isoid = (marker, iso)
+            ogisotoreads[isogene] = reads
 
     for line in open(bedfile):
         line = line.rstrip().split('\t')
         chrom, start, end, name, score, strand = line[:6]
-        iso, gene = getisogenefromname(name)
-        isoid = (marker, iso)
-        if isoid in ogisotoreads:
+        # iso, gene = getisogenefromname(name)
+        # isoid = (marker, iso)
+        if name in ogisotoreads:
             start, end = int(start), int(end)
             estarts = [int(x) for x in line[11].rstrip(',').split(',')]
             esizes = [int(x) for x in line[10].rstrip(',').split(',')]
             juncs = []
+            isoid = IsoformInfo.parse_string(name)
             for i in range(len(estarts) - 1):
                 juncs.append((start + estarts[i] + esizes[i], start + estarts[i + 1]))
             junckey = (chrom, strand, tuple(juncs))
-            if gene not in genetojuncstoends:
-                genetojuncstoends[gene] = {}
-            if junckey not in genetojuncstoends[gene]:
-                genetojuncstoends[gene][junckey] = []
-            genetojuncstoends[gene][junckey].append([start, end, isoid, ogisotoreads[isoid]])
+            if isoid.gene_id not in genetojuncstoends:
+                genetojuncstoends[isoid.gene_id] = {}
+            if junckey not in genetojuncstoends[isoid.gene_id]:
+                genetojuncstoends[isoid.gene_id][junckey] = []
+            genetojuncstoends[isoid.gene_id][junckey].append([start, end, isoid, ogisotoreads[name]])
 
     return genetojuncstoends
 
@@ -959,24 +966,23 @@ def revcomp(seq):
     return ''.join(newseq[::-1])
 
 
-def getbedgtfoutfrominfo(endinfo, chrom, strand, juncs, gene, genome):
+def getbedgtfoutfrominfo(endinfo, chrom, strand, juncs, genome):
     start, end, isoid, readnames = endinfo
     score = len(readnames)
-    marker, iso = isoid
     estarts, esizes = getexonsfromjuncs(juncs, start, end)
-    bedline = [chrom, start, end, iso + '|' + gene, score, strand, start, end,
-               getrgb(iso, strand, juncs), len(estarts), ','.join([str(x) for x in esizes]),
+    bedline = [chrom, start, end, str(isoid), score, strand, start, end,
+               getrgb(isoid, strand, juncs), len(estarts), ','.join([str(x) for x in esizes]),
                ','.join([str(x) for x in estarts])]
     gtflines = []
     gtflines.append([chrom, 'FLAIR', 'transcript', start + 1, end, score, strand, '.',
-                     'gene_id "' + gene + '"; transcript_id "' + iso + '";'])
+                     'gene_id "' + isoid.gene_id + '"; transcript_id "' + isoid.get_full_transcript_name() + '";'])
     exons = [(start + estarts[i], start + estarts[i] + esizes[i]) for i in range(len(estarts))]
     if strand == '-':
         exons = exons[::-1]
     exonseq = []
     for i in range(len(exons)):
         gtflines.append([chrom, 'FLAIR', 'exon', exons[i][0] + 1, exons[i][1], score, strand, '.',
-                         'gene_id "' + gene + '"; transcript_id "' + iso + '"; exon_number ' + str(i + 1)])
+                         'gene_id "' + isoid.gene_id + '"; transcript_id "' + isoid.get_full_transcript_name() + '"; exon_number ' + str(i + 1)])
         thisexonseq = genome.fetch(chrom, exons[i][0], exons[i][1])
         if strand == '-':
             thisexonseq = revcomp(thisexonseq)
@@ -1009,28 +1015,24 @@ def combineannotnovelwriteout(args, genetojuncstoends, genome):
                         endslist = endslist[:args.max_ends]
                 # nametousedcounts = {}
                 endVarID = 1
-                for isoinfo in endslist:
-                    marker, iso = isoinfo[2]
-                    # iso = iso.split('-endvar')[0]
-                    # if iso in nametousedcounts:
-                    #     nametousedcounts[iso] += 1
-                    #     iso = iso + '-endvar' + str(nametousedcounts[iso])
-                    # else:
-                    #     nametousedcounts[iso] = 1
-                    # print(iso)
-                    isoname = iso.split('|')[-1]
-                    iso = f'FL:{sjcID}-{endVarID}'
-                    if isoname != '': iso = iso + '|' + isoname
-                    else: iso = iso + '|' + iso
-                    isoinfo[2] = (marker, iso)
-                    bedline, gtffortranscript, tseq = getbedgtfoutfrominfo(isoinfo, chrom, strand, juncs, gene, genome)
+                for isodata in endslist:
+                    oldname = isodata[2]
+                    isoname = oldname.iso_name if oldname.has_iso_name else None
+                    iso_id = IsoformInfo.parse_from_ids(oldname.gene_id, sjcID, endVarID, iso_name=isoname)
+                    # isoname = iso.split('|')[-1]
+                    # iso = f'FL:{sjcID}-{endVarID}'
+                    # if isoname != '': iso = iso + '|' + isoname
+                    # else: iso = iso + '|' + iso
+                    # isoinfo[2] = (marker, iso)
+                    isodata[2] = iso_id
+                    bedline, gtffortranscript, tseq = getbedgtfoutfrominfo(isodata, chrom, strand, juncs, genome)
                     isoout.write(bedline)
-                    tstarts.append(isoinfo[0])
-                    tends.append(isoinfo[1])
+                    tstarts.append(isodata[0])
+                    tends.append(isodata[1])
                     gtflines.extend(gtffortranscript)
-                    mapout.write(iso + '|' + gene + '\t' + ','.join(isoinfo[3]) + '\n')
-                    countsout.write(iso + '|' + gene + '\t' + str(len(isoinfo[3])) + '\n')
-                    seqout.write('>' + iso + '|' + gene + '\n')
+                    mapout.write(str(iso_id) + '\t' + ','.join(isodata[3]) + '\n')
+                    countsout.write(str(iso_id) + '\t' + str(len(isodata[3])) + '\n')
+                    seqout.write('>' + str(iso_id) + '\n')
                     seqout.write(tseq + '\n')
                     endVarID += 1
                 sjcID += 1
@@ -1179,10 +1181,10 @@ def collapsefrombam():
 
     if not args.noaligntoannot:
         genetojuncstoends = processdetectedisos(args, args.output + '.matchannot.read.map.txt',
-                                            args.output + '.matchannot.bed', 'a', {})
+                                            args.output + '.matchannot.bed', {})
     else: genetojuncstoends = {}
     genetojuncstoends = processdetectedisos(args, args.output + '.novelisos.read.map.txt',
-                                            args.output + '.firstpass.bed', 'n',
+                                            args.output + '.firstpass.bed',
                                             genetojuncstoends)
 
     combineannotnovelwriteout(args, genetojuncstoends, genome)

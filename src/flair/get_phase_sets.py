@@ -5,6 +5,7 @@ import os
 import argparse
 import pysam
 from flair import FlairInputDataError
+from flair.parse_iso_ids import IsoformInfo
 
 def main():
     parser = argparse.ArgumentParser(description='options',
@@ -31,29 +32,6 @@ def main():
     get_phase_sets(isoforms=args.isoforms, isoform_reads_map=args.isoform_reads_map,
             bam=args.bam, output=args.output, outiso=args.outiso, comprehensive=args.comprehensive)
 
-
-def split_iso_gene(iso_gene):
-    if '_chr' in iso_gene:
-        splitchar = '_chr'
-    elif '_XM' in iso_gene:
-        splitchar = '_XM'
-    elif '_XR' in iso_gene:
-        splitchar = '_XR'
-    elif '_NM' in iso_gene:
-        splitchar = '_NM'
-    elif '_NR' in iso_gene:
-        splitchar = '_NR'
-    elif '_R2_' in iso_gene:
-        splitchar = '_R2_'
-    elif '_NC_' in iso_gene:
-        splitchar = '_NC_'
-    elif '_' not in iso_gene:
-        return iso_gene, 'NA'
-    else:
-        splitchar = '_'
-    iso = iso_gene[:iso_gene.rfind(splitchar)]
-    gene = iso_gene[iso_gene.rfind(splitchar)+1:]
-    return iso, gene
 
 def get_phase_sets(isoforms, isoform_reads_map, bam, output, outiso, outmap=None, comprehensive=False):
     isoform_model = {}
@@ -111,20 +89,20 @@ def get_phase_sets(isoforms, isoform_reads_map, bam, output, outiso, outmap=None
 
             # sort all phase sets for this iso by number of supporting reads
             pss = sorted(phase_sets[i].items(), key=lambda ps: ps[1], reverse=True)
-            iso, gene = split_iso_gene(i)
+            isoinfo = IsoformInfo.parse_string(i)
 
             tot_hap_reads = sum([len(x[1]) for x in pss])
 
             if pss and tot_hap_reads/total_supporting_reads >= 0.1:
                 for j in range(len(pss)):
                     ps_tag, hp_tag = pss[j][0]
-                    hap_name = iso+'-PS:'+ps_tag+':'+hp_tag+'_'+gene
+                    hap_name = str(IsoformInfo(isoinfo.iso_id + f':PS:{ps_tag}:{hp_tag}', isoinfo.iso_name, isoinfo.gene_id))#iso+'-PS:'+ps_tag+':'+hp_tag+'_'+gene
                     num_reads = len(pss[j][1])
                     writer.writerow([hap_name, ps_tag, hp_tag, num_reads, total_supporting_reads])
                     writer_iso.writerow(isoform_model[i][:3] + [hap_name] + isoform_model[i][4:])
                     if outmap: outmap.write(hap_name + '\t' + ','.join(pss[j][1]) + '\n')
             if not pss or tot_hap_reads/total_supporting_reads < 0.1 or comprehensive: ##not high enough variant frequency or all isoforms requested
-                hap_name = iso+'-PS:NA'+'_'+gene
+                hap_name = str(IsoformInfo(isoinfo.iso_id + ':PS:NA', isoinfo.iso_name, isoinfo.gene_id))#iso+'-PS:NA'+'_'+gene
                 writer.writerow([hap_name, 'NA'])
                 writer_iso.writerow(isoform_model[i][:3] + [hap_name] + isoform_model[i][4:])
 

@@ -2,6 +2,7 @@
 import sys
 import argparse
 from flair import FlairInputDataError
+from flair.parse_iso_ids import IsoformInfo
 
 def main():
     parser = argparse.ArgumentParser(description='options',
@@ -10,39 +11,11 @@ def main():
             action='store', help='isoforms in bed format')
     parser.add_argument('--force', action='store_true', dest='force',
             help='specify to not split isoform name by underscore into isoform and gene ids')
-    parser.add_argument('--add_reference_transcript_id', action='store_true', dest='reference_transcript_id',
-            help='specify to add reference_transcript_id attribute')
     args = parser.parse_args()
 
-    bed_to_gtf(query=args.inputfile, force=args.force, outputfile='/dev/stdout',
-               reference_transcript_id=args.reference_transcript_id)
+    bed_to_gtf(query=args.inputfile, force=args.force, outputfile='/dev/stdout')
 
-
-def split_iso_gene(iso_gene):
-    if '_chr' in iso_gene:
-        iso = iso_gene[:iso_gene.rfind('_chr')]
-        gene = iso_gene[iso_gene.rfind('_chr')+1:]
-    elif '_XM' in iso_gene:
-        iso = iso_gene[:iso_gene.rfind('_XM')]
-        gene = iso_gene[iso_gene.rfind('_XM')+1:]
-    elif '_XR' in iso_gene:
-        iso = iso_gene[:iso_gene.rfind('_XR')]
-        gene = iso_gene[iso_gene.rfind('_XR')+1:]
-    elif '_NM' in iso_gene:
-        iso = iso_gene[:iso_gene.rfind('_NM')]
-        gene = iso_gene[iso_gene.rfind('_NM')+1:]
-    elif '_NR' in iso_gene:
-        iso = iso_gene[:iso_gene.rfind('_NR')]
-        gene = iso_gene[iso_gene.rfind('_NR')+1:]
-    elif '_R2_' in iso_gene:
-        iso = iso_gene[:iso_gene.rfind('_R2_')]
-        gene = iso_gene[iso_gene.rfind('_R2_')+1:]
-    else:
-        iso = iso_gene[:iso_gene.rfind('_')]
-        gene = iso_gene[iso_gene.rfind('_')+1:]
-    return iso, gene
-
-def bed_to_gtf(query, outputfile, force=False, reference_transcript_id=False):
+def bed_to_gtf(query, outputfile, force=False):
     outfile = open(outputfile, 'w')
     for line in open(query):
         line = line.rstrip().split('\t')
@@ -52,26 +25,23 @@ def bed_to_gtf(query, outputfile, force=False, reference_transcript_id=False):
         bsizes = [int(n) for n in line[10].split(',')[:-1]]
         end, thick_start, thick_end = int(line[2]), int(line[6]), int(line[7])
 
-        if '_' not in name and not force:
-            raise FlairInputDataError('Entry name should contain underscore-delimited transcriptid and geneid like so: \n'
-                             'ENST00000318842.11_ENSG00000156313.12 or a4bab8a3-1d28_chr8:232000\n'
+        if '|' not in name and not force:
+            raise FlairInputDataError('Entry name should contain |-delimited transcriptid and geneid like so: \n'
+                             'FL:4-1|ENST00000557334.5|ENSG00000133703.12 or FL:7-1|FL:7-1|chr12:25206000\n'
                              'So no GTF conversion was done. Please run identify_gene_isoform first\n'
                              'for best results, or run with --force')
 
-        if ';' in name:
-            name = name.replace(';', ':')
+        #if ';' in name:
+        #    name = name.replace(';', ':')
 
         if force == True:
             transcript_id, gene_id = name, name
         else:
-            transcript_id, gene_id = split_iso_gene(name)
+            isoinfo = IsoformInfo.parse_string(name)
+            transcript_id, gene_id = isoinfo.get_full_transcript_name(), isoinfo.gene_id
 
         attributes = 'gene_id \"{}\"; transcript_id \"{}\";'\
                                 .format(gene_id, transcript_id)
-        if reference_transcript_id and '-referencetranscript' in transcript_id:
-            trimmed_transcript_id = transcript_id[:transcript_id.find('-referencetranscript')]
-            attributes = 'gene_id \"{}\"; transcript_id \"{}\"; reference_transcript_id \"{}\";'\
-                    .format(gene_id, trimmed_transcript_id, trimmed_transcript_id)
         print('\t'.join([chrom, 'FLAIR', 'transcript', str(start+1), str(tstarts[-1]+bsizes[-1]), '.', strand, '.',
                 attributes]), file=outfile)
         if thick_start != thick_end and (thick_start != start or thick_end != end):
@@ -102,9 +72,6 @@ def bed_to_gtf(query, outputfile, force=False, reference_transcript_id=False):
         for b in range(len(tstarts)):
             attributes = 'gene_id \"{}\"; transcript_id \"{}\"; exon_number \"{}\";'\
                     .format(gene_id, transcript_id, b)
-            if reference_transcript_id and '-referencetranscript' in transcript_id:
-                attributes = 'gene_id \"{}\"; transcript_id \"{}\"; exon_number \"{}\"; reference_transcript_id \"{}\";'\
-                        .format(gene_id, trimmed_transcript_id, b, trimmed_transcript_id)
             print('\t'.join([chrom, 'FLAIR', 'exon', str(tstarts[b]+1),
                     str(tstarts[b]+bsizes[b]), '.', strand, '.', attributes]), file=outfile)
 
