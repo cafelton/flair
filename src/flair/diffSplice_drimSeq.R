@@ -36,8 +36,8 @@ run_DRIMSeq <- function(args) {
   # Read sample info from the matrix
   sample_info <- fread(args$matrix, nrows=1)
   samples <- colnames(sample_info)[-c(1:2, length(sample_info))]
-  groups <- sapply(strsplit(samples, "_"), `[`, 2)
-  batches <- sapply(strsplit(samples, "_"), `[`, 3)
+  groups <- sapply(strsplit(samples, "__"), `[`, 2)
+  batches <- sapply(strsplit(samples, "__"), `[`, 3)
 
   # Determine conditionA and conditionB if not provided
   if (args$conditionA == '') {

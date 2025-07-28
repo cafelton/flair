@@ -3,6 +3,54 @@ from collections import namedtuple
 import re
 
 
+#IsoformId      iso_id|iso_name|gene_id
+#IsoformId      FL:12-1|ENST123|ENSGXXX
+#IsoformId      FL:12-2|ENST123|ENSGXXX
+
+#Fusion isoform     FL:13-1|ENSTXXXX--ENSTYYYY|ENGSXXXX--ENSGYYYY
+#Fusion isoform     FL:13-1|FL:13-1|ENGSXXXX--ENSGYYYY
+
+
+#Fusion isoform     FL:13-1:fusion:X--Y|segment1|X
+#Fusion isoform     FL:13-1:fusion:X--Y|segment2|Y
+
+
+#Fusion isoform     FL:13-1|FL:13-1|X--Y    10
+#->
+#                   FL:13-1|FL:13-1:X--Y|X    10
+#                   FL:13-1|FL:13-1:X--Y|Y    10
+#                   FL:14-1|FL:14-1|X    20     20/30 = 0.333
+#                   FL:15-1|FL:15-1|Y    30     30/40 = .25
+
+
+
+
+#how to keep the isoform
+
+
+#iso_id: unique identifier for each transcript
+#   contains:
+#       tag: origin of iso (currently FL or ANNOT (ANNOT only applies to files that are a conversion/subset of the annotated gtf))
+#       sj_id: unique id for set of splice junctions contained in the dataset
+#       ends_id: ID for set of ends within the space of the unique splice junction
+#       add_id: additional ID (fusion or haplotype) - remove??
+
+#iso_name: additional info about isoform (annotated name)
+#   formatting/parsing is less constrained, not required to be in a known format
+#   can get reset to iso_id
+
+#when one isoform requires multiple ids:
+#   fusion: isoA-locus1, isoA-locus2
+#   alleles: isoA-a1, isoA-a2
+
+# fusion ID - don't change the isoform ID
+
+
+# variant-aware-isoform ID - keep separate?
+#   can derive from isoform ID, but it is a separate concept
+#   variant identifier: scope could be isoform (could also be gene)
+#   var:12
+
 
 class IsoformInfo(namedtuple('IsoformInfo', ('iso_id','iso_name','gene_id'))):
     __slots__ = ()
@@ -15,8 +63,9 @@ class IsoformInfo(namedtuple('IsoformInfo', ('iso_id','iso_name','gene_id'))):
         return super(IsoformInfo, cls).__new__(cls, iso_id, iso_name, gene_id)
 
     def get_sub_ids(self):
-        p = re.compile(r'\d+')
-        all_ids = [int(x) for x in p.findall(self.iso_id)]
+        ##FL:12-1
+        # ANNOT:31-
+        all_ids = [int(x) for x in re.findall(r'\d+', self.iso_id)]
         sjID, endsID = all_ids[:2]
         addID = all_ids[2] if len(all_ids) > 2 else None
         tag = self.iso_id.split(':')[0]

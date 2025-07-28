@@ -91,6 +91,8 @@ if counts_tsv:
         iso = line[0]
         iso_counts[iso] = [float(x) for x in line[1:]]
 
+sample_names = ['__'.join(x.split('|')) for x in sample_names]
+
 isoforms = {}  # ir detection
 ir_junctions = {}  # ir detection
 a3_junctions = {}  # alt 3' ss detection

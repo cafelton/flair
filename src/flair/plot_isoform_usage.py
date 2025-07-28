@@ -247,7 +247,6 @@ def plot_isoform_usage(args):
                 continue
             proportions += [[isoinfo]+counts+[sum(counts)]]
 
-    print(proportions)
     colori = 0
     proportions = sorted(proportions, key=lambda x: x[-1], reverse=True)  # sort by expression
     proportions_color = []
@@ -265,7 +264,6 @@ def plot_isoform_usage(args):
         colori += 1
 
     proportions = [gray_bar[0]] + proportions_color
-    print(proportions)
     if len(proportions) == 1:
         raise FlairInputDataError('''Needs more than 1 isoform with sufficient representation, check gene_name in
             your counts file, then try toggling min_reads''')

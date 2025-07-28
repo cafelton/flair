@@ -15,7 +15,7 @@ with open(sys.argv[1]) as fin1:
         data[tid] = vals
 
 with open(sys.argv[2]) as fin2:
-    print('\t'.join(['feature_id', 'coordinate']+header[1:]+['isoform_ids']))
+    print('\t'.join(['feature_id', 'coordinate']+['__'.join(x.split('|')) for x in header[1:]]+['isoform_ids']))
     for line in fin2:
         cols = line.rstrip().split()
         if int(cols[3]) == 0:

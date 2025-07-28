@@ -30,7 +30,8 @@ BASIC_ANNOTATION_INCOMPLETE = $I/basic.annotation.incomplete.gtf
 BASIC_SHORTREAD_JUNCTIONS = $I/basic.shortread_junctions.tab
 BASIC_PROMOTER_REGIONS = $I/basic.promoter_regions.bed
 BASIC_READS_MANIFEST = $I/basic.reads_manifest.txt
-BASIC_COUNTS_MATRIX = $E/test-quantify.counts.tsv
+BASIC_COUNTS_MATRIX = $I/basic.counts_matrix_diffexp_newids.tsv
+# $E/test-quantify.counts.tsv
 #$I/basic.counts_matrix_diffexp.tsv
 BASIC_DIFFSPLICE_MATRIX = $I/basic.counts_matrix_diffsplice.tsv
 
@@ -99,7 +100,7 @@ default:
 
 
 # currently working tests:
-# make align-tests correct-tests collapse-tests quantify-tests predict-productivity-tests plot-usage-tests diff-iso-usage-tests transcriptome-tests
+# make align-tests correct-tests collapse-tests quantify-tests predict-productivity-tests plot-usage-tests diff-iso-usage-tests transcriptome-tests test-diffexpress
 
 # not updated to new IDs:
 # combine-tests fusion-tests variants-tests diffexp-tests diffsplice-tests
@@ -325,9 +326,10 @@ diffexp-tests: test-diffexp test-diffexp-help
 
 test-diffexp : mkdirs
 	flair diffexp -q $(BASIC_COUNTS_MATRIX) -o $O/$@ -e 1 -of
-# 	$(call cmp_expect,$@/genes_deseq2_MCF7_v_A549.tsv)
-# 	$(call cmp_expect,$@/isoforms_deseq2_MCF7_v_A549.tsv)
-# 	$(call cmp_expect_sort,$@/isoforms_drimseq_MCF7_v_A549.tsv)
+	$(call cmp_expect,$@/genes_deseq2_MCF7_v_A549.tsv)
+	$(call cmp_expect,$@/isoforms_deseq2_MCF7_v_A549.tsv)
+	$(call cmp_expect_sort,$@/isoforms_drimseq_MCF7_v_A549.tsv)
+	$(call cmp_expect_sort,$@/isoforms_sig_exp_change_norm_by_gene.tsv)
 
 test-diffexp-help: mkdirs
 	flair diffexp --help > $O/$@.out
@@ -340,7 +342,7 @@ diffsplice-tests: test-diffsplice test-diffsplice-help
 
 # various output files not long produce due to changes in test cases
 test-diffsplice: mkdirs
-	flair diffsplice -i $(BASIC_ISOFORMS_BED) -q $(BASIC_DIFFSPLICE_MATRIX) --test -o $O/$@ -of
+	flair diffsplice -i $(BASIC_ISOFORMS_BED) -q $E/test-quantify.counts.tsv --test -o $O/$@ -of
 	$(call cmp_expect_sort,$@/diffsplice.alt3.events.quant.tsv)
 	$(call cmp_expect_sort,$@/diffsplice.alt5.events.quant.tsv)
 	$(call cmp_expect,$@/diffsplice.es.events.quant.tsv)
@@ -373,7 +375,7 @@ test-predict-productivity-help: mkdirs
 diff-iso-usage-tests: test-diff-iso-usage test-diff-iso-usage-help
 
 test-diff-iso-usage: mkdirs
-	diff_iso_usage $(BASIC_COUNTS_MATRIX) A1 B1 $O/$@.tsv
+	diff_iso_usage $E/test-quantify-nobam.counts.tsv A1 B1 $O/$@.tsv
 	$(call cmp_expect,$@.tsv)
 
 test-diff-iso-usage-help: mkdirs

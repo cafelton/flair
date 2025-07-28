@@ -156,6 +156,7 @@ def get_sig_from_norm_by_gene(outname, filename):
     genetototcounts = get_gene_to_counts(filename)
     allids, alldeltas, corrpval = do_mtc_ttest(filename, genetototcounts)
     out = open(outname, 'w')
+    out.write('\t'.join(['ids', 'delta_usage', 'adj_pval']) + '\n')
     for i in range(len(allids)):
         if corrpval[i] < 0.05:
             out.write('\t'.join([str(allids[i]), str(round(alldeltas[i], 3)), str(corrpval[i])]) + '\n')
@@ -319,6 +320,16 @@ def run_drimseq(prefix, workdir, threads, groups, batches, matrixFile, outDir, f
             pipettor.run(["Rscript", diffExp_drimseq, "--threads", threads, "--group1", groups[0], "--group2", groups[-1],
                           "--batch", batches[0], "--matrix", matrixFile, "--outDir", outDir,
                           "--prefix", prefix, "--formula", formulaMatrixFile], stderr=stderr_fh)
+            outfile = open(outDir + f'/isoforms_drimseq_{groups[0]}_v_{groups[-1]}_corr.tsv', 'w')
+            for line in open(outDir + f'/isoforms_drimseq_{groups[0]}_v_{groups[-1]}.tsv'):
+                line = line.rstrip().split('\t')
+                line = line[:3] + line[-3:]
+                if line[0] == 'feature_id':
+                    line[2] = line[2].split('__')[1] + '_iso_usage'
+                    line[3] = line[3].split('__')[1] + '_iso_usage'
+                outfile.write('\t'.join(line) + '\n')
+            outfile.close()
+            os.rename(outDir + f'/isoforms_drimseq_{groups[0]}_v_{groups[-1]}_corr.tsv', outDir + f'/isoforms_drimseq_{groups[0]}_v_{groups[-1]}.tsv')
     except pipettor.ProcessException as exc:
         raise FlairError(f'running {prefix} failed, please check {stderr} for details') from exc
 
@@ -336,6 +347,7 @@ def calculate_sig(args):
         header = next(l).split()[1:]
 
     samples = ["%s|%s" % (h, num) for num, h in enumerate(header)]
+    samples = ['__'.join(x.split('|')) for x in samples]
     try:
         groups = [x.split("|")[1] for x in header]
         batches = [x.split("|")[-1] for x in header]
@@ -395,10 +407,12 @@ def calculate_sig(args):
 
     # DESeq2 genes & isoforms
     run_deseq2("genes_deseq2", workdir, groups, batches, geneMatrixFile, outDir, formulaMatrixFile)
-    # run_deseq2("isoforms_deseq2", workdir, groups, batches, isoMatrixFile, outDir, formulaMatrixFile)
+    run_deseq2("isoforms_deseq2", workdir, groups, batches, isoMatrixFile, outDir, formulaMatrixFile)
     #
     # # DIRMSeq
-    # run_drimseq("isoforms_drimseq", workdir, threads, groups, batches, drimMatrixFile, outDir, formulaMatrixFile)
+    run_drimseq("isoforms_drimseq", workdir, threads, groups, batches, drimMatrixFile, outDir, formulaMatrixFile)
+
+
 
 def diffExp(counts_matrix=''):
     set_unix_path()
