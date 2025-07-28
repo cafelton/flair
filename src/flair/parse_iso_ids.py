@@ -27,13 +27,31 @@ class IsoformInfo(namedtuple('IsoformInfo', ('iso_id','iso_name','gene_id'))):
         id = f'{tag}:{sj_id}-{ends_id}'
         if add_id: id += f'-{add_id}'
         return id
-    
-    def get_full_transcript_name(self):
+
+    @property
+    def full_transcript_name(self):
         return self.iso_id + '|' + self.iso_name
+
+    @property
+    def short_iso_id(self):
+        tag, sjID, endsID, addID = self.get_sub_ids()
+        return self.get_iso_id(tag, sjID, endsID, None)
 
     @property
     def has_iso_name(self):
         return self.iso_id != self.iso_name
+
+    @property
+    def fusion_index(self):
+        fusion_id = self.get_sub_ids()[-1]
+        if fusion_id and fusion_id.is_digit():
+            return int(fusion_id)
+        else: return None
+
+    @property
+    def is_fusion_locus(self):
+        fusion_id = self.get_sub_ids()[-1]
+        return fusion_id and fusion_id.is_digit()
 
     @classmethod
     def parse_from_ids(cls, gene_id, sj_id, ends_id=1, tag='FL', iso_name=None, add_id=None):

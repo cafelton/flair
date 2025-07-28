@@ -6,7 +6,7 @@ import os
 import scipy.stats as sps
 from flair import FlairInputDataError
 from flair.pycbio.sys import cli
-
+from flair.parse_iso_ids import IsoformInfo
 
 def parse_args():
     desc = """Calculates the usage of each isoform as a fraction of the total expression
@@ -24,26 +24,26 @@ def parse_args():
                         'isoform usage for each isoform')
     return parser.parse_args()
 
-def split_iso_gene(iso_gene):
-    if '_chr' in iso_gene:
-        iso = iso_gene[:iso_gene.rfind('_chr')]
-        gene = iso_gene[iso_gene.rfind('_chr')+1:]
-    elif '_XM' in iso_gene:
-        iso = iso_gene[:iso_gene.rfind('_XM')]
-        gene = iso_gene[iso_gene.rfind('_XM')+1:]
-    elif '_XR' in iso_gene:
-        iso = iso_gene[:iso_gene.rfind('_XR')]
-        gene = iso_gene[iso_gene.rfind('_XR')+1:]
-    elif '_NM' in iso_gene:
-        iso = iso_gene[:iso_gene.rfind('_NM')]
-        gene = iso_gene[iso_gene.rfind('_NM')+1:]
-    elif '_NR' in iso_gene:
-        iso = iso_gene[:iso_gene.rfind('_NR')]
-        gene = iso_gene[iso_gene.rfind('_NR')+1:]
-    else:
-        iso = iso_gene[:iso_gene.rfind('_')]
-        gene = iso_gene[iso_gene.rfind('_')+1:]
-    return iso, gene
+# def split_iso_gene(iso_gene):
+#     if '_chr' in iso_gene:
+#         iso = iso_gene[:iso_gene.rfind('_chr')]
+#         gene = iso_gene[iso_gene.rfind('_chr')+1:]
+#     elif '_XM' in iso_gene:
+#         iso = iso_gene[:iso_gene.rfind('_XM')]
+#         gene = iso_gene[iso_gene.rfind('_XM')+1:]
+#     elif '_XR' in iso_gene:
+#         iso = iso_gene[:iso_gene.rfind('_XR')]
+#         gene = iso_gene[iso_gene.rfind('_XR')+1:]
+#     elif '_NM' in iso_gene:
+#         iso = iso_gene[:iso_gene.rfind('_NM')]
+#         gene = iso_gene[iso_gene.rfind('_NM')+1:]
+#     elif '_NR' in iso_gene:
+#         iso = iso_gene[:iso_gene.rfind('_NR')]
+#         gene = iso_gene[iso_gene.rfind('_NR')+1:]
+#     else:
+#         iso = iso_gene[:iso_gene.rfind('_')]
+#         gene = iso_gene[iso_gene.rfind('_')+1:]
+#     return iso, gene
 
 
 def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename):
@@ -63,13 +63,14 @@ def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename):
     for line in counts_matrix_fh:
         line = line.rstrip().split('\t')
         iso_gene, count1, count2 = line[0], float(line[col1]), float(line[col2])
-        if '_' not in iso_gene:
+        if '|' not in iso_gene:
             raise FlairInputDataError('Incorrect isoform names: Please run identify_annotated_gene first so that \n'
                              'isoforms can be grouped by their parent genes\n')
-        iso, gene = split_iso_gene(iso_gene)
+        isoinfo = IsoformInfo.parse_string(iso_gene)
+        gene = isoinfo.gene_id
         if gene not in counts:
             counts[gene] = {}
-        counts[gene][iso] = [count1, count2]
+        counts[gene][isoinfo] = [count1, count2]
 
     with open(outfilename, 'wt') as outfile:
         writer = csv.writer(outfile, delimiter='\t', lineterminator=os.linesep)
@@ -91,9 +92,9 @@ def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename):
                 ctable[1] = othercounts
                 if ctable[0][0] + ctable[1][0] == 0 or ctable[0][1] + ctable[1][1] == 0 or not sum(ctable[1]):
                     continue
-                generes += [[gene, iso, sps.fisher_exact(ctable)[1]] + ctable[0] + ctable[1]]
+                generes += [[gene, str(iso), sps.fisher_exact(ctable)[1]] + ctable[0] + ctable[1]]
             if not generes:
-                writer.writerow([gene, iso, 'NA'] + ctable[0] + ctable[1])
+                writer.writerow([gene, str(iso), 'NA'] + ctable[0] + ctable[1])
                 continue
 
             for res in generes:

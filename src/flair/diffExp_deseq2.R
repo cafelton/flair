@@ -47,6 +47,8 @@ run_deseq_analysis <- function(args) {
   } else {
     ~ condition
   }
+  print(head(countData))
+  print(head(colData))
   
   dds <- DESeqDataSetFromMatrix(countData = countData, colData = colData, design = design)
   dds <- DESeq(dds)

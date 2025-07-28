@@ -21,6 +21,7 @@ import sys
 import pipettor
 import os
 from flair import FlairInputDataError
+from flair.parse_iso_ids import IsoformInfo
 ########################################################################
 # CommandLine
 ########################################################################
@@ -129,28 +130,6 @@ def getStarts(gtf):
     return starts, tnamenmdexcep
 
 
-def split_iso_gene(iso_gene):
-    if '_chr' in iso_gene:
-        splitchar = '_chr'
-    elif '_XM' in iso_gene:
-        splitchar = '_XM'
-    elif '_XR' in iso_gene:
-        splitchar = '_XR'
-    elif '_NM' in iso_gene:
-        splitchar = '_NM'
-    elif '_NR' in iso_gene:
-        splitchar = '_NR'
-    elif '_R2_' in iso_gene:
-        splitchar = '_R2_'
-    elif '_NC_' in iso_gene:
-        splitchar = '_NC_'
-    else:
-        splitchar = '_'
-    iso = iso_gene[:iso_gene.rfind(splitchar)]
-    gene = iso_gene[iso_gene.rfind(splitchar)+1:]
-    return iso, gene
-
-
 def getSeqs(bed, genome):
 
     isoDict = dict()
@@ -162,10 +141,15 @@ def getSeqs(bed, genome):
         if len(entry) > 0:
             read, seq = entry.split()
             # accommodate different bedtools versions - they use different separators
-
             iso = read.split('::')[0]
             iso = iso.split("(")[0]
-            if iso[:10] == 'fusiongene': iso = '_'.join(iso.split('_')[1:])
+            fullisoinfo = IsoformInfo.parse_string(iso)
+            if fullisoinfo.is_fusion_locus:
+                iso = IsoformInfo(fullisoinfo.short_iso_id, fullisoinfo.iso_name, fullisoinfo.gene_id)
+            else:
+                iso= fullisoinfo
+
+            #if iso[:10] == 'fusiongene': iso = '_'.join(iso.split('_')[1:])
             if iso not in isoDict:
                 isoDict[iso] = Isoform(iso,seq)
             else:
@@ -247,9 +231,10 @@ def checkPTC(orfEndPos, exonSizes, allExons, nmdexcep, isoname):
     elif exonSizes[-2] < maxdistfromexonedge: ptcpointont = sum(exonSizes[:-2])
     else: ptcpointont = sum(exonSizes[:-1]) - maxdistfromexonedge
 
-    isoname = isoname.split('_')[-2]
-    if isoname[-2] == '-': isoname = isoname[:-2]
-    if isoname in nmdexcep:
+    # isoname = isoname.split('_')[-2]
+    # if isoname[-2] == '-': isoname = isoname[:-2]
+    # if isoname in nmdexcep:
+    if isoname.iso_name in nmdexcep:
         ptc, ptcpointont = False, 0
 
     exonsWithStop = allExons[exonWithStop]
@@ -270,20 +255,27 @@ def get_exons(bedline):
 def predict(bed, starts, isoDict, nmdexcep):
     for line in open(bed):
         line = line.rstrip().split('\t')
-        read   = line[3]
+        # read   = line[3]
         strand = line[5]
+
+        fullisoinfo = IsoformInfo.parse_string(line[3])
+        if fullisoinfo.is_fusion_locus:
+            isoinfo = IsoformInfo(fullisoinfo.short_iso_id, fullisoinfo.iso_name, fullisoinfo.gene_id)
+        else:
+            isoinfo = fullisoinfo
+        fusionindex = fullisoinfo.fusion_index
         for exonCoord in get_exons(line):
             elen = exonCoord[1]-exonCoord[0]
-            if read[:10] == 'fusiongene':
-                fusionindex = read.split('_')[0]
-                read = '_'.join(read.split('_')[1:])
-            else: fusionindex = "NA"
+            # if read[:10] == 'fusiongene':
+            #     fusionindex = read.split('_')[0]
+            #     read = '_'.join(read.split('_')[1:])
+            # else: fusionindex = "NA"
             if strand == '+':
-                isoDict[read].allEsizes.append(elen)
-                isoDict[read].allExons.append((exonCoord[0], exonCoord[1], strand, fusionindex))
+                isoDict[isoinfo].allEsizes.append(elen)
+                isoDict[isoinfo].allExons.append((exonCoord[0], exonCoord[1], strand, fusionindex))
             elif strand == '-':
-                isoDict[read].allEsizes.insert(0, elen)
-                isoDict[read].allExons.insert(0, (exonCoord[0], exonCoord[1], strand, fusionindex))
+                isoDict[isoinfo].allEsizes.insert(0, elen)
+                isoDict[isoinfo].allExons.insert(0, (exonCoord[0], exonCoord[1], strand, fusionindex))
 
     dr = pipettor.DataReader()
     bedtools_cmd = ('bedtools', 'intersect', '-a', bed, '-b', starts, '-split', '-s', '-wao')
@@ -293,19 +285,27 @@ def predict(bed, starts, isoDict, nmdexcep):
     for intersection in dr.data.split('\n'):
         if len(intersection) > 0:
             intersection = intersection.split('\t')
-            read   = intersection[3]
-            if read[:10] == 'fusiongene' and read[10] != '1': continue # only getting starts for 5' genes
-            if read[:10] == 'fusiongene': read = '_'.join(read.split('_')[1:])
-            overlap  = intersection[-1]
-            goStart  = int(intersection[-6]) if intersection[5] == '+' else int(intersection[-5])
-            if intersection[5] != intersection[-2]: overlap = '0' ##if start is not on same strand, doesn't count
-            isoDict[read].strand = intersection[5]
-            isoDict[read].chrom = intersection[0]
+            fullisoinfo = IsoformInfo.parse_string(intersection[3])
+            if fullisoinfo.is_fusion_locus:
+                isoinfo = IsoformInfo(fullisoinfo.short_iso_id, fullisoinfo.iso_name, fullisoinfo.gene_id)
+            else:
+                isoinfo = fullisoinfo
+            fusionindex = fullisoinfo.fusion_index
+            if not fusionindex or fusionindex == 1: ##not a fusion or 5' gene of a fusion
 
-            for exonCoord in get_exons(intersection):
-                isoDict[read].exons.add(exonCoord)
-                if overlap == "3" and exonCoord[0] <= goStart <= exonCoord[1]:
-                    isoDict[read].starts.add((exonCoord,goStart))
+            # read   = intersection[3]
+            # if read[:10] == 'fusiongene' and read[10] != '1': continue # only getting starts for 5' genes
+            # if read[:10] == 'fusiongene': read = '_'.join(read.split('_')[1:])
+                overlap  = intersection[-1]
+                goStart  = int(intersection[-6]) if intersection[5] == '+' else int(intersection[-5])
+                if intersection[5] != intersection[-2]: overlap = '0' ##if start is not on same strand, doesn't count
+                isoDict[isoinfo].strand = intersection[5]
+                isoDict[isoinfo].chrom = intersection[0]
+
+                for exonCoord in get_exons(intersection):
+                    isoDict[isoinfo].exons.add(exonCoord)
+                    if overlap == "3" and exonCoord[0] <= goStart <= exonCoord[1]:
+                        isoDict[isoinfo].starts.add((exonCoord,goStart))
 
     stops = set(['TAA','TGA','TAG'])
     for iso,o in isoDict.items():
@@ -401,13 +401,17 @@ def main():
 
     bedout = open(output + '.bed', 'w')
     infoout = open(output + '.info.tsv', 'w')
-    infoout.write('\t'.join(['#isoname', 'tstartont', 'tendont', 'ptcpointont', 'AAseq']) + '\n')
+    infoout.write('\t'.join(['#isoname', 'productivity', 'tstartont', 'tendont', 'ptcpointont', 'AAseq']) + '\n')
     with open(bed) as lines:
         for line in lines:
             bedCols = line.rstrip().split()
-            if bedCols[3][:10] == 'fusiongene': isoname = '_'.join(bedCols[3].split('_')[1:])
-            else: isoname = bedCols[3]
-            isoObj = isoformObjs[isoname]
+            fullisoinfo = IsoformInfo.parse_string(bedCols[3])
+            if fullisoinfo.is_fusion_locus: isoinfo = IsoformInfo(fullisoinfo.short_iso_id, fullisoinfo.iso_name, fullisoinfo.gene_id)
+            else: isoinfo = fullisoinfo
+
+            # if bedCols[3][:10] == 'fusiongene': isoname = '_'.join(bedCols[3].split('_')[1:])
+            # else: isoname = bedCols[3]
+            isoObj = isoformObjs[isoinfo]
 
             if defineORF == 'longest':
                 isoObj.orfs.sort(key=lambda x: x[3], reverse=True)
@@ -415,14 +419,17 @@ def main():
                 isoObj.orfs.sort(key=lambda x: x[4])
             pro,start,end,orfLen, tisPos = isoObj.orfs[0]
 
-            if extra_col:
-                bedCols += [pro]
-            else:
-                iso, gene = split_iso_gene(bedCols[3])
-                bedCols[3] = "%s_%s_%s" % (iso, pro, gene)
 
+            ###Productivity appended to end of line
+            bedCols.append(pro)
             bedCols[8] = beaut[pro]
-            if 'fusiongene' in bedCols[3]:
+            # if extra_col:
+            #     bedCols += [pro]
+            # else:
+            #     iso, gene = split_iso_gene(bedCols[3])
+            #     bedCols[3] = "%s_%s_%s" % (iso, pro, gene)
+
+            if fullisoinfo.is_fusion_locus:
                 if not int(bedCols[1]) < start < int(bedCols[2]) and not int(bedCols[1]) < end < int(bedCols[2]):
                     bedCols[6],bedCols[7] = bedCols[1], bedCols[1]
                 else:
@@ -438,7 +445,7 @@ def main():
                 else:
                     bedCols[7],bedCols[6] = str(start),str(end)
             bedout.write("\t".join(bedCols) + '\n')
-            infoout.write('\t'.join([bedCols[3], str(tisPos), str(tisPos+orfLen), str(isoObj.ptcpoint), translate(isoObj.sequence[tisPos:tisPos+orfLen])]) + '\n')
+            infoout.write('\t'.join([bedCols[3], pro, str(tisPos), str(tisPos+orfLen), str(isoObj.ptcpoint), translate(isoObj.sequence[tisPos:tisPos+orfLen])]) + '\n')
 
 
 

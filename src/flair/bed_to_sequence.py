@@ -149,7 +149,7 @@ def bed_to_sequence(query, genome, outfilename, isoform_haplotypes=False, vcfinp
 
             isoinfo = IsoformInfo.parse_string(name)
             iso_id = ':'.join(isoinfo.iso_id.split(':')[:-1])
-            iso_id_ref, iso_id_alt = '>' + iso_id+':0|1', '>' + iso_id+':1|0'
+            iso_id_ref, iso_id_alt = iso_id+':0/1', iso_id+':1/0'
             names = [str(IsoformInfo(iso_id_ref, isoinfo.iso_name, isoinfo.gene_id)), str(IsoformInfo(iso_id_alt, isoinfo.iso_name, isoinfo.gene_id))]
             pulled_seq = [add_variants_to_seq(v_to_add, seq, blockstarts, blocksizes, strand, entry[0], iso_name=names[0]),
                           add_variants_to_seq(v_to_add_alt, seq, blockstarts, blocksizes, strand, entry[0],

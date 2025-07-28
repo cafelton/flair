@@ -38,7 +38,7 @@ def bed_to_gtf(query, outputfile, force=False):
             transcript_id, gene_id = name, name
         else:
             isoinfo = IsoformInfo.parse_string(name)
-            transcript_id, gene_id = isoinfo.get_full_transcript_name(), isoinfo.gene_id
+            transcript_id, gene_id = isoinfo.full_transcript_name, isoinfo.gene_id
 
         attributes = 'gene_id \"{}\"; transcript_id \"{}\";'\
                                 .format(gene_id, transcript_id)

@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mplpatches
 import matplotlib.colors as mcolors
 from flair import FlairInputDataError
+from flair.parse_iso_ids import IsoformInfo
 
 def parse_args():
     desc = '''The script will produce two images, one of the isoform models and another of the usage proportions.
@@ -26,7 +27,7 @@ def parse_args():
     isoform and counts matrix files''')
     parser.add_argument('-o', action='store', dest='o', type=str,
                         help='prefix used for output files (default=gene_name)')
-    parser.add_argument('--min_reads', action='store', dest='min_reads', type=int, default=6,
+    parser.add_argument('--min_reads', action='store', dest='min_reads', type=int, default=3,
                         help='minimum number of total supporting reads for an isoform to be visualized (default=6)')
     parser.add_argument('-v', '--vcf', action='store', dest='vcf',
                         help='''VCF containing the isoform names that include each variant
@@ -51,35 +52,42 @@ def parse_bed(bedfh, names=False, plotany=False, keepiso=set()):
         blocksizes = [int(n) for n in line[10].split(',')[:-1]]
         blockstarts = [int(n) + start for n in line[11].split(',')[:-1]]
 
-        if '_' in name[-4:]:  # for isoforms with productivity appended to the name
-            flag = name[name.rfind('_') + 1:]
+        if len(line) > 12: #has extra column
+            flag = line[12]
             if flag not in ['PRO', 'PTC']:
                 flag = 'Z'+flag  # ngo and nstop are alphabetically after pro and ptc
-            name = name[:name.rfind('_')]
-        elif '_PTC' in name:
-            flag = 'PTC'
-            name = name.replace('_PTC', '')
-        elif '_PRO' in name:
-            flag = 'PRO'
-            name = name.replace('_PRO', '')
-        elif '_NST' in name:
-            flag = 'Z'
-            name = name.replace('_NST', '')
-        elif '_NGO' in name:
-            flag = 'Z'
-            name = name.replace('_NGO', '')
-
         else:
             flag = 'PRO'
 
-        if name not in keepiso and name[:name.rfind('_')] not in keepiso:
-            continue
+        # if '_' in name[-4:]:  # for isoforms with productivity appended to the name
+        #     flag = name[name.rfind('_') + 1:]
+        #     if flag not in ['PRO', 'PTC']:
+        #         flag = 'Z'+flag  # ngo and nstop are alphabetically after pro and ptc
+        #     name = name[:name.rfind('_')]
+        # elif '_PTC' in name:
+        #     flag = 'PTC'
+        #     name = name.replace('_PTC', '')
+        # elif '_PRO' in name:
+        #     flag = 'PRO'
+        #     name = name.replace('_PRO', '')
+        # elif '_NST' in name:
+        #     flag = 'Z'
+        #     name = name.replace('_NST', '')
+        # elif '_NGO' in name:
+        #     flag = 'Z'
+        #     name = name.replace('_NGO', '')
+        #
+        # else:
+        #     flag = 'PRO'
 
-        strand = line[5]
-        lowbound = min(lowbound, start)
-        upbound = max(upbound, end)
-        info += [[blocksizes, blockstarts, keepiso[name], flag, name]]  # exon sizes, exon starts, color, prod, iso
-        usednames += [name]
+        isoinfo = IsoformInfo.parse_string(name)
+
+        if isoinfo in keepiso: #and name[:name.rfind('_')] not in keepiso:
+            strand = line[5]
+            lowbound = min(lowbound, start)
+            upbound = max(upbound, end)
+            info.append([blocksizes, blockstarts, keepiso[isoinfo], flag, isoinfo])  # exon sizes, exon starts, color, prod, iso
+            usednames.append(isoinfo)
     upbound += 100  # padding up and downstream of isoforms
     lowbound -= 100
     for i in range(len(info)):
@@ -141,8 +149,9 @@ def plot_blocks(data, panel, names, iso_to_variant, upper, lower, strand, base_c
 
         for j in range(len(read)):  # plot isoform block
             line = read[j]
-            sizes, starts, color, flag, iso_name = line[0], line[1], line[2], line[3], line[4][:line[4].rfind('_')]
+            sizes, starts, color, flag, iso_name = line[0], line[1], line[2], line[3], line[4] #[:line[4].rfind('_')]
 
+            iso_display_name = iso_name.full_transcript_name
             iso_start = data[di][0+j][1][0]
             iso_end = data[di][0+j][1][-1]+data[di][0+j][0][-1]
             if strand == '+':
@@ -153,9 +162,9 @@ def plot_blocks(data, panel, names, iso_to_variant, upper, lower, strand, base_c
                 x = iso_end if not reverse_text_alignment else iso_start
 
             if reverse_text_alignment:  # plot iso name
-                panel.text(x, i-height/2 + 1, iso_name, fontsize=8, ha='right', va='center')
+                panel.text(x, i-height/2 + 1, iso_display_name, fontsize=8, ha='right', va='center')
             else:
-                panel.text(x, i-height/2 + 1, iso_name, fontsize=8, ha='left', va='center')
+                panel.text(x, i-height/2 + 1, iso_display_name, fontsize=8, ha='left', va='center')
 
             for k in range(len(sizes)):  # each block of each read
                 if flag == 'PRO':
@@ -193,7 +202,7 @@ def plot_blocks(data, panel, names, iso_to_variant, upper, lower, strand, base_c
         di += 1
 
 def plot_isoform_usage(args):
-    args = parse_args()
+    # args = parse_args()
     bedfh = open(args.isoforms)
     counts_matrix = open(args.counts_matrix)
     if not args.o:
@@ -226,17 +235,19 @@ def plot_isoform_usage(args):
 
     for line in counts_matrix:
         line = line.rstrip().split('\t')
-        if args.gene_name not in line[0]:
-            continue
-        counts = [float(x) for x in line[1:]]
-        if all(x < args.min_reads for x in counts):
-            for i in range(len(sample_ids)):
-                gray_bar[0][i+1] += counts[i]   # add to gray bar bc expression is too low
-            for i in range(len(sample_ids)):
-                totals[i] += counts[i]
-            continue
-        proportions += [[line[0]]+counts+[sum(counts)]]
+        isoinfo = IsoformInfo.parse_string(line[0])
 
+        if args.gene_name == isoinfo.gene_id:
+            counts = [float(x) for x in line[1:]]
+            if all(x < args.min_reads for x in counts):
+                for i in range(len(sample_ids)):
+                    gray_bar[0][i+1] += counts[i]   # add to gray bar bc expression is too low
+                for i in range(len(sample_ids)):
+                    totals[i] += counts[i]
+                continue
+            proportions += [[isoinfo]+counts+[sum(counts)]]
+
+    print(proportions)
     colori = 0
     proportions = sorted(proportions, key=lambda x: x[-1], reverse=True)  # sort by expression
     proportions_color = []
@@ -254,7 +265,7 @@ def plot_isoform_usage(args):
         colori += 1
 
     proportions = [gray_bar[0]] + proportions_color
-
+    print(proportions)
     if len(proportions) == 1:
         raise FlairInputDataError('''Needs more than 1 isoform with sufficient representation, check gene_name in
             your counts file, then try toggling min_reads''')
@@ -314,15 +325,14 @@ def plot_isoform_usage(args):
             if line.startswith('#'):
                 continue
             line = line.rstrip().split('\t')
-            if args.gene_name not in line[-1]:
-                continue
-            variant_isos = ''.join(line[-1].split(':')[5:]).split(',')
-            for k in keepiso:
-                if ''.join(k.split(':')) in variant_isos:
-                    iso_name = k[:k.rfind('_')]
-                    if iso_name not in iso_to_variant:
-                        iso_to_variant[iso_name] = []
-                    iso_to_variant[iso_name] += [(line[0], int(line[1])-lower, line[3], line[4])]
+            if args.gene_name in line[-1]:
+                variant_isos = [IsoformInfo.parse_string(x) for x in ':'.join(line[-1].split(':')[5:]).split(',')]
+                for iso_name in keepiso:
+                    if iso_name in variant_isos:
+                        # iso_name = k[:k.rfind('_')]
+                        if iso_name not in iso_to_variant:
+                            iso_to_variant[iso_name] = []
+                        iso_to_variant[iso_name] += [(line[0], int(line[1])-lower, line[3], line[4])]
 
 
     plot_blocks(packed, panel, names, iso_to_variant, upper, lower, strand, base_colors, l=1)

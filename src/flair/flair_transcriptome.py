@@ -975,14 +975,14 @@ def getbedgtfoutfrominfo(endinfo, chrom, strand, juncs, genome):
                ','.join([str(x) for x in estarts])]
     gtflines = []
     gtflines.append([chrom, 'FLAIR', 'transcript', start + 1, end, score, strand, '.',
-                     'gene_id "' + isoid.gene_id + '"; transcript_id "' + isoid.get_full_transcript_name() + '";'])
+                     'gene_id "' + isoid.gene_id + '"; transcript_id "' + isoid.full_transcript_name + '";'])
     exons = [(start + estarts[i], start + estarts[i] + esizes[i]) for i in range(len(estarts))]
     if strand == '-':
         exons = exons[::-1]
     exonseq = []
     for i in range(len(exons)):
         gtflines.append([chrom, 'FLAIR', 'exon', exons[i][0] + 1, exons[i][1], score, strand, '.',
-                         'gene_id "' + isoid.gene_id + '"; transcript_id "' + isoid.get_full_transcript_name() + '"; exon_number ' + str(i + 1)])
+                         'gene_id "' + isoid.gene_id + '"; transcript_id "' + isoid.full_transcript_name + '"; exon_number ' + str(i + 1)])
         thisexonseq = genome.fetch(chrom, exons[i][0], exons[i][1])
         if strand == '-':
             thisexonseq = revcomp(thisexonseq)

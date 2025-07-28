@@ -12,6 +12,7 @@ import tempfile
 import time
 import logging
 import pipettor, pysam
+from flair.parse_iso_ids import IsoformInfo
 
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
@@ -75,8 +76,8 @@ def quantify(isoform_sequences=''):
 
             sample, group, batch, readFile = cols
             if args.sample_id_only is False:
-                if '_' in sample or '_' in group or '_' in batch:
-                    raise Exception(f'Please do not use underscores in the id, condition, or batch fields of {args.r}.')
+                if '|' in sample or '|' in group or '|' in batch:
+                    raise Exception(f'Please do not use | in the id, condition, or batch fields of {args.r}.')
 
             readFileRoot = tempfile.NamedTemporaryFile().name
             if args.temp_dir != '':
@@ -92,7 +93,7 @@ def quantify(isoform_sequences=''):
 
     for num, data in enumerate(samData, 0):
         sample, group, batch, readFile, samOut = data
-        logging.info(f'Aligning sample {sample}_{batch}, {num+1}/{len(samData)}')
+        logging.info(f'Aligning sample {sample}|{batch}, {num+1}/{len(samData)}')
         mm2_command = ('minimap2', '--MD', '-a', '-N', '4', '-t', str(args.t), args.i, readFile)
 
         # TODO: Replace this with proper try/except Exception as ex
@@ -106,7 +107,7 @@ def quantify(isoform_sequences=''):
 
 
 
-        logging.info(f'Quantifying isoforms for sample {sample}_{batch}, {num+1}/{len(samData)}')
+        logging.info(f'Quantifying isoforms for sample {sample}|{batch}, {num+1}/{len(samData)}')
 
         count_cmd = ['filter_transcriptome_align.py', '-s', samOut,
                      '-o', samOut+'.counts.txt', '-t', str(args.t), '--quality', str(args.quality)]
@@ -144,11 +145,14 @@ def quantify(isoform_sequences=''):
     if args.sample_id_only:
         countMatrix.write('\t'.join(['ID']+[x[0] for x in samData])+'\n')
     else:
-        countMatrix.write('ids\t%s\n' % '\t'.join(['_'.join(x[:3]) for x in samData]))
+        countMatrix.write('ids\t%s\n' % '\t'.join(['|'.join(x[:3]) for x in samData]))
 
-    features = sorted(list(countData.keys()))
+
+
+    features = [IsoformInfo.parse_string(x) for x in countData.keys()]
+    features.sort(key=lambda x:x.get_sub_ids())
     for f in features:
-        countMatrix.write('%s\t%s\n' % (f, '\t'.join(str(x) for x in countData[f])))
+        countMatrix.write('%s\t%s\n' % (f, '\t'.join(str(x) for x in countData[str(f)])))
 
     countMatrix.close()
 
