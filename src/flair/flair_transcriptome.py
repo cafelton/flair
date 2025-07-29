@@ -1161,7 +1161,6 @@ def collapsefrombam():
                               allannottranscripts])
             tempprefixes.append(tempprefix)
     t2 = time.time()
-    logging.info(f'region overhead: {t2 - t1}')
     mp.set_start_method('fork')
     p = mp.Pool(args.threads)
     childErrs = set()
