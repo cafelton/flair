@@ -152,8 +152,7 @@ def quantify(isoform_sequences=''):
     features = [IsoformInfo.parse_string(x) for x in countData.keys()]
     features.sort(key=lambda x:x.get_sub_ids())
     for f in features:
-        countMatrix.write('%s\t%s\n' % (f, '\t'.join(str(x) for x in countData[str(f)])))
-
+        countMatrix.write('%s\t%s\n' % (f, '\t'.join(str(int(x)) for x in countData[str(f)])))
     countMatrix.close()
 
     if args.tpm:

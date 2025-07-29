@@ -3,6 +3,7 @@ import sys
 import csv
 import os
 from flair import FlairInputDataError
+from flair.parse_iso_ids import IsoformInfo
 
 def main():
     try:
@@ -19,26 +20,6 @@ def main():
                                         support=s,)
 
 
-def split_iso_gene(iso_gene):
-    if '_chr' in iso_gene:
-        splitchar = '_chr'
-    elif '_XM' in iso_gene:
-        splitchar = '_XM'
-    elif '_XR' in iso_gene:
-        splitchar = '_XR'
-    elif '_NM' in iso_gene:
-        splitchar = '_NM'
-    elif '_NR' in iso_gene:
-        splitchar = '_NR'
-    elif '_R2_' in iso_gene:
-        splitchar = '_R2_'
-    elif '_NC_' in iso_gene:
-        splitchar = '_NC_'
-    else:
-        splitchar = '_'
-    iso = iso_gene[:iso_gene.rfind(splitchar)]
-    gene = iso_gene[iso_gene.rfind(splitchar)+1:]
-    return iso, gene
 
 def filter_isoforms_by_proportion_of_gene_expr(isoforms, outfilename, support):
     genes = dict()
@@ -46,7 +27,8 @@ def filter_isoforms_by_proportion_of_gene_expr(isoforms, outfilename, support):
     for line in isoFH:
         line = line.rstrip().split('\t')
         name = line[3]
-        iso, gene = split_iso_gene(name)
+        isoinfo = IsoformInfo.parse_string(name)
+        gene = isoinfo.gene_id
         if gene not in genes:
             genes[gene] = set()
         genes[gene].add(tuple(line))
@@ -58,8 +40,8 @@ def filter_isoforms_by_proportion_of_gene_expr(isoforms, outfilename, support):
             if gene_total == 0:
                 continue
             for iso in genes[gene]:
-                if float(iso[0][-1])/gene_total >= support:
-                    writer.writerow(iso)
+                if float(iso[-1])/gene_total >= support:
+                    writer.writerow(iso[:-1])
 
 if __name__ == "__main__":
     main()

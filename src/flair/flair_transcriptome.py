@@ -85,7 +85,6 @@ def get_args():
                         if the file is less than 1GB, parallelization is done by chromosome, but if it's larger, 
                         parallelization is done by region of non-overlapping reads. Other modes: bychrom, byregion, 
                         auto:xGB - for setting the auto threshold, it must be in units of GB.''')
-
     parser.add_argument('--predictCDS', default=False, action='store_true',
                         help='specify if you want to predict the CDS of the final isoforms. '
                              'Will be output in the final bed file but not the gtf file. '
@@ -1041,6 +1040,15 @@ def combineannotnovelwriteout(args, genetojuncstoends, genome):
             for g in gtflines:
                 gtfout.write('\t'.join([str(x) for x in g]) + '\n')
 
+def decide_parallel_mode(parallel_option, genomealignedbam):
+    ###parallel_option format already validated in option validation method
+    if parallel_option in {'bychrom', 'byregion'}: return parallel_option
+    else:
+        if parallel_option[-2:] == 'GB': threshold = float(parallel_option[5:-2])
+        else: threshold = float(parallel_option[5:])
+        filesizeGB = os.path.getsize(genomealignedbam) / 1e+9
+        if filesizeGB > threshold: return 'byregion'
+        else: return 'bychrom'
 
 def runcollapsebychrom(listofargs):
     args, tempprefix, splicesiteannot_chrom, juncstotranscript, junctogene, allannotse, genetoannotjuncs, annottranscripttoexons, allannottranscripts = listofargs
@@ -1116,15 +1124,13 @@ def collapsefrombam():
     t1 = time.time()
     allregions = []
 
-
-
-    if decide_parallel_mode(args.parallelmode, args.genomealignedbam) == 'bychrom':  # less than 1G
+    if decide_parallel_mode(args.parallelmode, args.genomealignedbam) == 'bychrom':
         for chrom in allchrom:
             chromsize = genome.get_reference_length(chrom)
             allregions.append((chrom, 0, chromsize))
     else:
         pipettor.run([('bedtools', 'bamtobed', '-i', args.genomealignedbam),
-                      ('bedPartition', '-minPartitionItems=1000', '-parallel=' + str(args.threads), '/dev/stdin',
+                      ('flair_partition', '--min_partition_items', '1000', '--threads', str(args.threads), '/dev/stdin',
                        tempDir + 'regions.bed')])
         for line in open(tempDir + 'regions.bed'):
             line = line.rstrip().split('\t')
