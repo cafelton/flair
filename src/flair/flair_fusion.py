@@ -15,7 +15,7 @@ from flair.gtf_io import gtf_record_parser, GtfAttrsSet
 from flair.read_processing import get_sequence_from_bed
 from flair.pycbio.hgdata.bed import Bed, BedReader
 from flair.bed_to_gtf import bed_to_gtf
-from flair.isoform_data import make_big_bed, BED_FIELDS, EXTRA_BED_FIELDS
+from flair.isoform_data import make_big_bed
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -402,7 +402,7 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
     bed_to_gtf(args.output + '.fusions.isoforms.bed', args.output + '.fusions.isoforms.gtf', is_flair_bed=True)
 
     with pysam.FastaFile(args.genome) as genome:
-        make_big_bed(genome, args.output + '.syntheticAligned.flair.chrom.sizes', args.output.split('/')[-1], args.output + '.fusions.isoforms', BED_FIELDS + EXTRA_BED_FIELDS)
+        make_big_bed(genome, args.output + '.syntheticAligned.flair.chrom.sizes', args.output + '.fusions.isoforms')
 
     # removing extra FLAIR files
     if not args.keep_intermediate:

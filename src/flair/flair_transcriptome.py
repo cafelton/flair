@@ -15,14 +15,14 @@ from flair.partition_runner import parallel_mode_parse, partition_runner_factory
 from flair.io_utils import make_temp_dir
 from flair.bed_to_gtf import bed_to_gtf
 from flair.isoform_data import (Exon, Gene, Isoform, exons_to_juncs, get_bed_exons_from_exons,
-                                get_sequence_for_exons, binary_search, convert_to_bed12, convert_to_flair_bed, BED_FIELDS,
-                                EXTRA_BED_FIELDS, make_big_bed)
+                                get_sequence_for_exons, binary_search, convert_to_bed12, convert_to_flair_bed, make_big_bed)
 from flair.read_processing import generate_genomic_alignment_read_to_clipping_file
 from flair.read_correction import filter_correct_group_reads
 from flair.count_sam_transcripts import TRUST_ENDS_WINDOW, run_count_sam_transcripts
 from flair.annotation_data import annot_data_from_gtf
-from flair.pycbio.hgdata.bed import Bed
+from flair.pycbio.hgdata.bed import Bed, BedReader
 from flair.predictProductivity import predict_prod_temp
+from flair.flair_bed import FlairBed
 
 MIN_POLYA_FRAC_DIFF_FOR_SE_STRANDING = 0.1
 
@@ -1306,20 +1306,18 @@ def get_new_ids(output):
     iso_hash_to_ID, gene_hash_to_ID = {}, {}
     iso_count, gene_count = 1, 1
     with open(output + '.isoforms.newids.bed', 'w') as fh:
-        for line in open(output + '.isoforms.bed'):
-            line = line.rstrip('\n').split('\t')
-            iso_hash, gene_hash = line[3], line[12]
-            if iso_hash not in iso_hash_to_ID:
+        for bed_rec in BedReader(output + '.isoforms.bed', bedClass=FlairBed):
+            if bed_rec.name not in iso_hash_to_ID:
                 iso_id = f'FLT{iso_count:08d}'
-                iso_hash_to_ID[iso_hash] = iso_id
+                iso_hash_to_ID[bed_rec.name] = iso_id
                 iso_count += 1
-            if gene_hash not in gene_hash_to_ID:
+            if bed_rec.gene_id not in gene_hash_to_ID:
                 gene_id = f'FLG{gene_count:08d}'
-                gene_hash_to_ID[gene_hash] = gene_id
+                gene_hash_to_ID[bed_rec.gene_id] = gene_id
                 gene_count += 1
-            line[3] = iso_hash_to_ID[iso_hash]
-            line[12] = gene_hash_to_ID[gene_hash]
-            fh.write('\t'.join(line) + '\n')
+            bed_rec.name = iso_hash_to_ID[bed_rec.name]
+            bed_rec.gene_id = gene_hash_to_ID[bed_rec.gene_id]
+            bed_rec.write(fh)
     return iso_hash_to_ID
 
 def fix_ids_txt_file(iso_hash_to_ID, oldfile, newfile):
@@ -1395,7 +1393,7 @@ def flair_transcriptome():
     # index of column with gene id in extracols, then additional column indexes + names
     bed_to_gtf(args.output + '.isoforms.bed', args.output + '.isoforms.gtf', is_flair_bed=True)
 
-    make_big_bed(genome, temp_dir + 'chrom.sizes', args.output.split('/')[-1], args.output + '.isoforms', BED_FIELDS + EXTRA_BED_FIELDS)
+    make_big_bed(genome, temp_dir + 'chrom.sizes', args.output + '.isoforms')
 
     if not args.keep_intermediate:
         shutil.rmtree(temp_dir)
