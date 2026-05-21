@@ -6,7 +6,7 @@
 ##
 def strArraySplit(commaStr):
     "parser for comma-separated string list into a list"
-    if len(commaStr) == 0:
+    if len(commaStr) == 0 or commaStr == ',':
         return []
     # autosql uses longblob, so if this came from a mysql database, we need to convert to bytes
     if isinstance(commaStr, bytes):
@@ -14,15 +14,16 @@ def strArraySplit(commaStr):
     strs = commaStr.split(",")
     if commaStr.endswith(","):
         strs = strs[0:-1]
+    strs = [s if s != '' else None for s in strs]
     return strs
 
 
 def strArrayJoin(strs):
     """formatter for a list of values into a comma separated string, not-str values are
     converted to a string"""
-    if strs is None:
-        return ","
-    return ",".join([str(s) for s in strs]) + ","
+    if strs is None or len(strs) == 0:
+        return ""
+    return ",".join([str(s) if s is not None else '' for s in strs]) + ","
 
 
 # TSV typeMap tuple for str arrays

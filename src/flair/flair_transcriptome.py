@@ -1189,9 +1189,9 @@ def write_final_isoform_output(partition, args, final_transcript_objs, iso_to_co
             # spliced isos checked against spliced total, single exon checked against full-length total
             passes_support, my_frac_support = _iso_passes_support_filter(args, tname, final_transcript_objs[tname].gene_id, len(final_transcript_objs[tname].exons), iso_to_counts, gene_to_tot)
             if passes_support:
-                thickStart, thickEnd, prodRGB, productivity = predict_prod_temp(final_transcript_objs[tname], annots.start_codon_count,
-                                                                                annots.gene_to_cds_starts, annots.transcript_to_nmd_except, genome)
-                convert_to_flair_bed(final_transcript_objs[tname], thickStart=thickStart, thickEnd=thickEnd, itemRgb=prodRGB, read_support=iso_to_counts[tname][0],
+                thickStart, thickEnd, productivity = predict_prod_temp(final_transcript_objs[tname], annots.start_codon_count,
+                                                                       annots.gene_to_cds_starts, annots.transcript_to_nmd_except, genome)
+                convert_to_flair_bed(final_transcript_objs[tname], thickStart=thickStart, thickEnd=thickEnd, read_support=iso_to_counts[tname][0],
                                      frac_support=my_frac_support, productivity=productivity).write(iso_fh)
                 seq_fh.write('>' + final_transcript_objs[tname].name + '\n')
                 seq_fh.write(final_transcript_objs[tname].get_sequence(genome) + '\n')

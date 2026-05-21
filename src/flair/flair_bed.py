@@ -8,6 +8,16 @@ from flair.pycbio.tsv.tabFile import TabFileReader
 def parseStrOrNone(s):
     return None if len(s) == 0 else s
 
+
+def get_strand_rgb(strand, junclen):
+    if junclen == 0:
+        return "99,99,99"
+    elif strand == '+':
+        return "27,158,119"
+    else:
+        return "217,95,2"
+
+
 class FlairBed(Bed):
     """
     BED class that passes along flair-derived attributes.
@@ -15,12 +25,13 @@ class FlairBed(Bed):
     This enforces the transcript_id and name columns having the same value
     """
     __slots__ = ("gene_id", "ref_transcript_id", "ref_gene_mappings", "read_support",
-                 "frac_support", "productivity")
+                 "frac_support", "productivity", "transcript_class", "fused_genes", "pos_in_fusion")
 
     def __init__(self, chrom, chromStart, chromEnd, name=None, *, score=None, strand=None,
                  thickStart=None, thickEnd=None, itemRgb=None, blocks=None,
                  gene_id=None, ref_transcript_id=None, ref_gene_mappings=None,
-                 read_support=None, frac_support=None, productivity=None):
+                 read_support=None, frac_support=None, productivity=None, transcript_class='basic',
+                 fused_genes=(), pos_in_fusion=None):
         super().__init__(chrom=chrom, chromStart=chromStart, chromEnd=chromEnd,
                          name=name, score=score, strand=strand, thickStart=thickStart, thickEnd=thickEnd,
                          itemRgb=itemRgb, blocks=blocks, numStdCols=12)
@@ -30,6 +41,27 @@ class FlairBed(Bed):
         self.read_support = read_support
         self.frac_support = frac_support
         self.productivity = productivity
+        self.transcript_class = transcript_class
+        self.fused_genes = fused_genes
+        self.pos_in_fusion = pos_in_fusion
+        if itemRgb is None:
+            self.itemRgb = self._get_rgb()
+
+    def _get_rgb(self):
+        PRODUCTIVITY_COLORS = {"PRO": "103,169,207", "PTC": "239,138,98", "NST": "0,0,0", "NGO": "0,0,0"}
+        if self.transcript_class == 'fusion':
+            return '179,46,29'
+        elif self.transcript_class == 'readthrough':
+            return '135,56,181'
+        elif self.productivity is not None:
+            return PRODUCTIVITY_COLORS[self.productivity]
+        else:
+            return get_strand_rgb(self.strand, max((self.blockCount, 0)))
+
+    def addBlock(self, start, end):
+        super().addBlock(start, end)
+        if self.itemRgb == "99,99,99":  # color that is dependent on having few blocks
+            self.itemRgb = self._get_rgb()
 
     @property
     def transcript_id(self):
@@ -51,7 +83,11 @@ class FlairBed(Bed):
                     strArrayJoin(self.ref_gene_mappings),
                     defaultIfNone(self.read_support, ''),
                     defaultIfNone(round(self.frac_support, 4), ''),
-                    defaultIfNone(self.productivity, '')])
+                    defaultIfNone(self.productivity, ''),
+                    self.transcript_class,
+                    strArrayJoin(self.fused_genes),
+                    defaultIfNone(self.pos_in_fusion, '')
+                    ])
         return row
 
     @classmethod
@@ -67,6 +103,9 @@ class FlairBed(Bed):
         bed.read_support = int(row[15]) if row[15] != '' else None
         bed.frac_support = float(row[16]) if row[16] != '' else None
         bed.productivity = parseStrOrNone(row[17])
+        bed.transcript_class = row[18]
+        bed.fused_genes = strArraySplit(row[19])
+        bed.pos_in_fusion = int(row[20]) if row[20] != '' else None
         return bed
 
     @classmethod
@@ -83,7 +122,7 @@ class FlairBed(Bed):
         my_attrs = []
         if self.ref_transcript_id is not None:
             my_attrs.append(('ref_transcript_id', self.ref_transcript_id))
-        if self.ref_gene_mappings is not None:
+        if len(self.ref_gene_mappings) > 0:
             my_attrs.append(('ref_gene_mappings', self.ref_gene_mappings))
         if self.read_support is not None:
             my_attrs.append(('read_support', self.read_support))
@@ -91,6 +130,11 @@ class FlairBed(Bed):
             my_attrs.append(('frac_support', self.frac_support))
         if self.productivity is not None:
             my_attrs.append(('productivity', self.productivity))
+        my_attrs.append(('transcript_class', self.transcript_class))
+        if len(self.fused_genes) > 0:
+            my_attrs.append(('fused_genes', self.fused_genes))
+        if self.pos_in_fusion is not None:
+            my_attrs.append(('pos_in_fusion', self.pos_in_fusion))
         return my_attrs
 
 

@@ -14,6 +14,8 @@ from flair import FlairInputDataError
 from flair.gtf_io import gtf_record_parser, GtfAttrsSet
 from flair.read_processing import get_sequence_from_bed
 from flair.pycbio.hgdata.bed import Bed, BedReader
+from flair.bed_to_gtf import bed_to_gtf
+from flair.isoform_data import make_big_bed, BED_FIELDS, EXTRA_BED_FIELDS
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -370,56 +372,37 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
     print(' '.join(transcriptome_command))
     pipettor.run(transcriptome_command)
 
-    # clean up isoform/gene names for args.output + '.combined.isoform.read.map.txt', '.isoforms.bed', '.isoforms.fa'
-    oldnametonewname = {}
-    out = open(args.output + '.syntheticAligned.isoforms.bed', 'w')
-    c = 0
-    for bed in BedReader(args.output + '.syntheticAligned.flair.isoforms.bed', fixScores=True):
-        c += 1
-        newname = 'fusioniso' + str(c) + '_' + bed.chrom
-        oldnametonewname[bed.name] = newname
-        bed.name = newname
-        bed.write(out)
-    out.close()
-    out = open(args.output + '.syntheticAligned.isoform.read.map.txt', 'w')
-    for line in open(args.output + '.syntheticAligned.flair.isoform.read.map.txt'):
-        line = line.split('\t', 1)
-        if line[0] in oldnametonewname:
-            line[0] = oldnametonewname[line[0]]
-            out.write('\t'.join(line))
-    out.close()
-    out = open(args.output + '.isoform.counts.txt', 'w')
-    for line in open(args.output + '.syntheticAligned.flair.isoform.counts.txt'):
-        line = line.split('\t', 1)
-        if line[0] in oldnametonewname:
-            line[0] = oldnametonewname[line[0]]
-            out.write('\t'.join(line))
-    out.close()
-
     print('converting coordinates from synthetic to genomic')
-    convert_synthetic_isos(args.output + '.syntheticAligned.isoforms.bed',
-                           args.output + '.syntheticAligned.isoform.read.map.txt', freadsname,
+    convert_synthetic_isos(args.output + '.syntheticAligned.flair.isoforms.bed',
+                           args.output + '.syntheticAligned.flair.isoform.read.map.txt', freadsname,
                            args.output + '-syntheticBreakpointLoc.bed', args.output + '.fusions.isoforms.bed', args.min_dist_between_bp)
+
     goodisos = set()
     for bed in BedReader(args.output + '.fusions.isoforms.bed', fixScores=True):
-        goodisos.add('_'.join(bed.name.split('_')[1:]))
+        goodisos.add(bed.name)
 
-    out = open(args.output + '.fusions.isoforms.fa', 'w')
-    good = False
-    for line in open(args.output + '.syntheticAligned.flair.isoforms.fa'):
-        if line[0] == '>':
-            oldname = line[1:].rstrip()
-            if oldnametonewname[oldname] in goodisos:
-                good = True
-            else:
-                good = False
+    with open(args.output + '.fusions.isoforms.fa', 'w') as out:
+        good = False
+        for line in open(args.output + '.syntheticAligned.flair.isoforms.fa'):
+            if line[0] == '>':
+                name = line[1:].rstrip()
+                if name in goodisos:
+                    good = True
+                else:
+                    good = False
             if good:
-                out.write('>' + oldnametonewname[oldname] + '\n')
-        elif good:
-            out.write(line)
-    out.close()
+                out.write(line)
 
-    os.rename(args.output + '.syntheticAligned.isoform.read.map.txt', args.output + '.fusion.isoform.read.map.txt')
+    with open(args.output + '.fusion.isoform.read.map.txt', 'w') as out:
+        for line in open(args.output + '.syntheticAligned.flair.isoform.read.map.txt'):
+            name = line.split('\t', 1)[0]
+            if name in goodisos:
+                out.write(line)
+
+    bed_to_gtf(args.output + '.fusions.isoforms.bed', args.output + '.fusions.isoforms.gtf', is_flair_bed=True)
+
+    with pysam.FastaFile(args.genome) as genome:
+        make_big_bed(genome, args.output + '.syntheticAligned.flair.chrom.sizes', args.output.split('/')[-1], args.output + '.fusions.isoforms', BED_FIELDS + EXTRA_BED_FIELDS)
 
     # removing extra FLAIR files
     if not args.keep_intermediate:

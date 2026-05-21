@@ -29,7 +29,6 @@ from flair.flair_bed import FlairBed
 
 STOP_CODON_SEQS = set(['TAA', 'TGA', 'TAG'])
 MAX_DIST_FROM_EXON_EDGE_FOR_PTC = 55
-PRODUCTIVITY_COLORS = {"PRO": "103,169,207", "PTC": "239,138,98", "NST": "0,0,0", "NGO": "0,0,0"}
 
 def parse_args():
     parser = argparse.ArgumentParser(description='used to predict coding sequence and amino acid sequence of novel isoforms based on annotated start codons')
@@ -147,17 +146,16 @@ def identify_best_orf_from_starts(transcript, my_annot_starts, my_seq, transcrip
 
 def predict_prod_temp(transcript, start_codon_count, gene_to_cds_starts, transcript_to_nmd_except, genome):
     my_prod = None
-    thickStart, thickEnd, prodRGB = None, None, None
+    thickStart, thickEnd = None, None
     if start_codon_count > 0:  # annotations exist and contain start codons
         my_annot_starts = get_annot_start_codons(transcript, gene_to_cds_starts)
         my_orf = identify_best_orf_from_starts(transcript, my_annot_starts, transcript.get_sequence(genome), transcript_to_nmd_except)
-        prodRGB = PRODUCTIVITY_COLORS[my_orf[0]]
         if transcript.strand == '+':
             thickStart, thickEnd = my_orf[1], my_orf[2]
         else:
             thickStart, thickEnd = my_orf[2], my_orf[1]
         my_prod = my_orf[0]
-    return thickStart, thickEnd, prodRGB, my_prod
+    return thickStart, thickEnd, my_prod
 
 ##########
 # END NEW CODE FOR TRANSCRIPTOME

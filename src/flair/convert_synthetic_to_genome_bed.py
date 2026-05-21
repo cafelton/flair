@@ -1,4 +1,5 @@
-from flair.pycbio.hgdata.bed import Bed, BedBlock, BedReader
+from flair.pycbio.hgdata.bed import BedBlock, BedReader
+from flair.flair_bed import FlairBed
 
 def get_iso_to_reads(readmapfile):
     isoreadsup = {}
@@ -72,10 +73,10 @@ def identify_fusion_problems(fgenes, locustopartners, maxpromiscuity, genetoname
                 areig.append(False)
         else:
             allnames.add(g)
-            if g[:3] == 'chr':
-                areig.append(True)
-            else:
-                areig.append(False)
+            # if g[:3] == 'chr':
+            #     areig.append(True)
+            # else:
+            areig.append(False)
         if g in genetoparalogs:
             other = set(fgenes) - {g, }
             other = {genetoparalogs[g2] if g2 in genetoparalogs else g2 for g2 in other}
@@ -102,22 +103,27 @@ def get_locus_bounds(synthinfo):
         laststart += locuslen[i]
     return locusbounds
 
-def separate_exons_by_locus(esizes, estarts, numloci, locusbounds, start):
+def separate_exons_by_locus(esizes, estarts, numloci, locusbounds, start, thickStart, thickEnd):
     starts = [None for x in range(numloci)]
     exonindexes = [[] for x in range(numloci)]
+    thickEdges = [[None, None] for x in range(numloci)]
+    for order in range(numloci):
+        if locusbounds[order][0] < thickStart < locusbounds[order][1]:
+            thickEdges[order][0] = thickStart
+        if locusbounds[order][0] < thickEnd < locusbounds[order][1]:
+            thickEdges[order][1] = thickEnd
     for i in range(len(esizes)):
         thisstart, thisend = start + estarts[i], start + estarts[i] + esizes[i]
-
         for order in range(numloci):
             if locusbounds[order][0] < thisstart and thisend <= locusbounds[order][1]:
                 if starts[order] is None:
                     starts[order] = estarts[i]  # thisstart #- locusbounds[order][0]
                 exonindexes[order].append(i)
-    return starts, exonindexes
+    return starts, exonindexes, thickEdges
 
-def convert_to_genomic_coords(numloci, synthinfo, exonindexes, starts, locusbounds, esizes, estarts, start, iso):
+def convert_to_genomic_coords(numloci, synthinfo, exonindexes, starts, locusbounds, esizes, estarts, start, iso, hasThickEdges, thickEdges):
     genomicbounds = []
-    beds = []
+    bedinfo = []
     for order in range(numloci):
         genename, genomicchr, leftbound, rightbound = synthinfo[order]
         locusesizes = [esizes[i] for i in exonindexes[order]]
@@ -125,7 +131,8 @@ def convert_to_genomic_coords(numloci, synthinfo, exonindexes, starts, locusboun
         locusestarts = [x - starts[order] for x in locusestarts]
         totlen = locusestarts[-1] + locusesizes[-1]
         locusdir = '+' if leftbound < rightbound else '-'
-        name = 'gene' + str(order + 1) + '_' + iso
+        # name = 'gene' + str(order + 1) + '_' + iso
+        thickStart, thickEnd = None, None
         if leftbound > rightbound:  # reverse direction
             temp = []
             for i in range(len(locusestarts) - 1, -1, -1):
@@ -133,21 +140,26 @@ def convert_to_genomic_coords(numloci, synthinfo, exonindexes, starts, locusboun
             locusestarts = temp
             locusesizes = locusesizes[::-1]
             chromStart = leftbound - (((start + starts[order]) - locusbounds[order][0]) + totlen)
-            chromEnd = leftbound - ((start + starts[order]) - locusbounds[order][0])
-            thickStart = leftbound - (start + totlen)
-            thickEnd = leftbound - start
-            genomicbounds.append((genomicchr, chromEnd, chromStart, locusdir))
+            if thickEdges[order][0] is not None:
+                thickEnd = leftbound - (thickEdges[order][0] - locusbounds[order][0])
+            if thickEdges[order][1] is not None:
+                thickStart = leftbound - (thickEdges[order][1] - locusbounds[order][0])
         else:
             chromStart = leftbound + ((start + starts[order]) - locusbounds[order][0])
-            chromEnd = chromStart + totlen
-            thickStart = chromStart
-            thickEnd = chromEnd
-            genomicbounds.append((genomicchr, chromStart, chromEnd, locusdir))
+            if thickEdges[order][0] is not None:
+                thickStart = leftbound + (thickEdges[order][0] - locusbounds[order][0])
+            if thickEdges[order][1] is not None:
+                thickEnd = leftbound + (thickEdges[order][1] - locusbounds[order][0])
+        chromEnd = chromStart + totlen
+        if hasThickEdges:
+            thickStart = chromStart if thickStart is None else thickStart
+            thickEnd = chromEnd if thickEnd is None else thickEnd
+
+        genomicbounds.append((genomicchr, chromStart, chromEnd, locusdir))
         blocks = [BedBlock(chromStart + locusestarts[i], chromStart + locusestarts[i] + locusesizes[i])
                   for i in range(len(locusesizes))]
-        beds.append(Bed(genomicchr, chromStart, chromEnd, name=name, score=1000, strand=locusdir,
-                        thickStart=thickStart, thickEnd=thickEnd, itemRgb='0', blocks=blocks))
-    return genomicbounds, beds
+        bedinfo.append((genomicchr, chromStart, chromEnd, locusdir, thickStart, thickEnd, blocks))
+    return genomicbounds, bedinfo
 
 def check_too_close(numloci, genomicbounds, min_dist):
     for i in range(numloci - 1):
@@ -188,33 +200,54 @@ def write_final_fusion_reads(readsfile, freadsfinal):
             linecount += 1
     freads.close()
 
+def get_gene_id(gene_og_to_new, gene_og, curr_gene_count):
+    if gene_og not in gene_og_to_new:
+        gene_id = f'FLG{curr_gene_count:08d}'
+        gene_info = tuple(gene_og.split('--'))
+        gene_og_to_new[gene_og] = (gene_id, gene_info)
+        curr_gene_count += 1
+    gene_id, gene_info = gene_og_to_new[gene_og]
+    return curr_gene_count, gene_id, gene_info
 
 def convert_synthetic_isos(isoformsbed, readmapfile, readsfile, breakpointfile, outname, min_dist):
-    from flair.pycbio.hgdata.bed import BedReader
     isoreadsup = get_iso_to_reads(readmapfile)
     synthchrtoinfo = get_synth_info(breakpointfile)
 
     freadsfinal = set()
     out = open(outname, 'w')
-    for bed in BedReader(isoformsbed, fixScores=True):
+    gene_og_to_new = {}
+    curr_gene_count = 1
+    for bed in BedReader(isoformsbed, fixScores=True, bedClass=FlairBed):
         iso, start = bed.name, bed.chromStart
         esizes = [len(blk) for blk in bed.blocks]
         estarts = [blk.start - start for blk in bed.blocks]
-        fusionchr = bed.chrom
-        synthinfo = [x.split('..') for x in synthchrtoinfo[fusionchr].split('--')]
+        synthinfo = [x.split('..') for x in synthchrtoinfo[bed.chrom].split('--')]
         synthinfo = [[y[0], y[1], int(y[2]), int(y[3])] for y in synthinfo]
 
         locusbounds = get_locus_bounds(synthinfo)
         if start < locusbounds[0][1] and locusbounds[-1][0] < bed.chromEnd:
-
             numloci = len(synthinfo)
-            starts, exonindexes = separate_exons_by_locus(esizes, estarts, numloci, locusbounds, start)
+
+            # FIXME add handling of existing thickStart and thickEnd values from synthetic aligned bed,
+            hasThickEdges = bed.thickStart != bed.thickEnd
+            starts, exonindexes, thickEdges = separate_exons_by_locus(esizes, estarts, numloci, locusbounds, start, bed.thickStart, bed.thickEnd)
 
             if None not in starts:
-                genomicbounds, beds = convert_to_genomic_coords(numloci, synthinfo, exonindexes, starts, locusbounds, esizes, estarts, start, iso)
+                genomicbounds, bedinfos = convert_to_genomic_coords(numloci, synthinfo, exonindexes, starts, locusbounds, esizes, estarts, start, iso, hasThickEdges, thickEdges)
                 if not check_too_close(numloci, genomicbounds, min_dist):
-                    for bed in beds:
-                        bed.write(out)
+                    for fusion_order, (genomicchr, chromStart, chromEnd, locusdir, thickStart, thickEnd, blocks) in enumerate(bedinfos):
+                        curr_gene_count, fusion_id, ref_gene_info = get_gene_id(gene_og_to_new, bed.chrom, curr_gene_count)
+                        flair_genes = []
+                        for gene in ref_gene_info:
+                            curr_gene_count, gene_id, ref_gene_ids = get_gene_id(gene_og_to_new, gene, curr_gene_count)
+                            flair_genes.append(gene_id)
+                        # convert reference genes that are chromosome regions to none in the ref_gene_mappings field
+                        ref_gene_info = tuple([x if x[:3] != 'chr' else None for x in ref_gene_info])
+                        outbed = FlairBed(genomicchr, chromStart, chromEnd, name=bed.name, score=bed.score, strand=locusdir, blocks=blocks,
+                                          gene_id=fusion_id, ref_gene_mappings=ref_gene_info, thickStart=thickStart, thickEnd=thickEnd,
+                                          read_support=bed.read_support, frac_support=bed.frac_support, productivity=bed.productivity, transcript_class='fusion',
+                                          fused_genes=tuple(flair_genes), pos_in_fusion=fusion_order)
+                        outbed.write(out)
                     freadsfinal.update(isoreadsup[iso])
     out.close()
     write_final_fusion_reads(readsfile, freadsfinal)

@@ -99,7 +99,7 @@ def get_exon_intron_blocks(read):
 def getCorrectGene(chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, chrom, readblocks, thisdir):  # noqa: C901 - FIXME: reduce complexity
     intron_blocks, exon_blocks = readblocks
     if chrom not in chrom_to_gene_pos:
-        my_gene = chrom + ':' + str(round(exon_blocks[0][0], -4))
+        my_gene = (chrom, exon_blocks[0][0], exon_blocks[-1][1])  # chrom + ':' + str(round(exon_blocks[0][0], -4))
     else:
         found_genes = []
         for j in intron_blocks:
@@ -124,7 +124,7 @@ def getCorrectGene(chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, chrom, r
                 gene_overlaps.sort(reverse=True)
                 my_gene = gene_overlaps[0][1]
             else:
-                my_gene = chrom + ':' + str(round(exon_blocks[0][0], -4))
+                my_gene = (chrom, exon_blocks[0][0], exon_blocks[-1][1])  # chrom + ':' + str(round(exon_blocks[0][0], -4))
     return my_gene
 
 
@@ -133,6 +133,7 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
     isrevtosign = {True: '-', False: '+'}
     withsup = pysam.AlignmentFile(bam, "rb")
     readToAligns = {}
+    nongenicloci = []
     for read in withsup:
         if read.is_mapped and not read.is_secondary and read.has_tag('SA') and (mode == 'genomic' or not read.is_reverse):  # if aligned to transcriptome, must match strand of transcript
             rname = read.query_name
@@ -150,6 +151,8 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
             if mode == 'genomic':
                 refchr = read.reference_name
                 genename = getCorrectGene(chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, refchr, get_exon_intron_blocks(read), readdir)
+                if type(genename) is tuple:
+                    nongenicloci.append(genename)
                 if readdir == '+':
                     readToAligns[rname].append([(qstart, refstart), (qend, refend), genename, readdir, refchr])
                 else:
@@ -167,6 +170,24 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
                     readToAligns[rname].append([(qstart, refend), (qend, refstart), genename, genedir, refchr])
     withsup.close()
 
+    nongenicloci.sort()
+    ognongenic_to_genes = {}
+    lastchrom, laststart, lastend, group = None, -1, -1, []
+    for chrom, s, e in nongenicloci:
+        if s > lastend or chrom != lastchrom:
+            if len(group) > 0:
+                gname = f'{lastchrom}:{laststart}-{lastend}'
+                for n in group:
+                    ognongenic_to_genes[n] = gname
+            lastchrom, laststart, lastend = chrom, s, e
+        elif e > lastend:
+            lastend = e
+        group.append((chrom, s, e))
+    if len(group) > 0:
+        gname = f'{lastchrom}:{laststart}-{lastend}'
+        for n in group:
+            ognongenic_to_genes[n] = gname
+
     interestingloci = {}
     for read in readToAligns:
         alignedloci = sorted(readToAligns[read])
@@ -174,6 +195,7 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
         readgenes = [x[2] for x in alignedloci]
         if 2 <= len(set(readgenes)) <= maxloci:
             if readgenes[0] in gene_to_all_exons:  # 5' gene is annotated
+                readgenes = [ognongenic_to_genes[x] if x in ognongenic_to_genes else x for x in readgenes]
                 info = tuple(readgenes)
                 if info not in interestingloci:
                     interestingloci[info] = []
