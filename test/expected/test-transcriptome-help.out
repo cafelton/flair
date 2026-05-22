@@ -1,34 +1,27 @@
-usage: transcriptome [-h] -b GENOME_ALIGNED_BAM -g GENOME [-o OUTPUT]
-                     [-t THREADS] [-f ANNOT_GTF]
-                     [--junction_tab JUNCTION_TAB | --junction_bed JUNCTION_BED]
+usage: transcriptome [-h] -b GENOME_ALIGNED_BAM -g GENOME --sample_name
+                     SAMPLE_NAME [-o OUTPUT] [-f ANNOT_GTF]
+                     [--junction_tab JUNCTION_TAB]
+                     [--junction_bed JUNCTION_BED]
                      [--junction_support JUNCTION_SUPPORT]
                      [--ss_window SS_WINDOW] [-w END_WINDOW]
                      [--sjc_support SJC_SUPPORT] [--se_support SE_SUPPORT]
-                     [--frac_support FRAC_SUPPORT] [--no_stringent]
-                     [--no_check_splice] [--no_align_to_annot]
-                     [-n NO_REDUNDANT] [--max_ends MAX_ENDS] [--filter FILTER]
-                     [--quality QUALITY] [--parallel_mode PARALLEL_MODE]
-                     [--keep_intermediate] [--keep_sup]
-                     [--end_norm_dist END_NORM_DIST] [--output_endpos]
-                     [--output_bam] [--fusion_breakpoints FUSION_BREAKPOINTS]
-                     [--allow_paralogs] [--generate_map] [--trust_strand]
-                     [--trust_ends]
+                     [--frac_support FRAC_SUPPORT] [--trust_strand]
+                     [--trust_ends] [--no_stringent] [--no_check_splice]
+                     [--no_align_to_annot] [--max_ends MAX_ENDS]
+                     [--filter FILTER] [--keep_sup] [--quality QUALITY]
+                     [--allow_paralogs] [-t THREADS]
+                     [--parallel_mode PARALLEL_MODE]
+                     [--fusion_breakpoints FUSION_BREAKPOINTS]
+                     [--keep_intermediate] [--generate_map] [--output_bam]
 
 generates confident transcript models directly from a bam file of aligned long
 rna-seq reads
 
 options:
   -h, --help            show this help message and exit
-  -b GENOME_ALIGNED_BAM, --genome_aligned_bam GENOME_ALIGNED_BAM
-                        Sorted and indexed bam file aligned to the genome
-  -g GENOME, --genome GENOME
-                        FastA of reference genome, can be minimap2 indexed
   -o OUTPUT, --output OUTPUT
-                        output file name base for FLAIR isoforms (default:
-                        flair)
-  -t THREADS, --threads THREADS
-                        number of threads to run with - related to
-                        parallel_mode
+                        output file name base for FLAIR isoforms, if not
+                        provided, output will default to sample_name.
   -f ANNOT_GTF, --gtf ANNOT_GTF
                         GTF annotation file, used for identifying annotated
                         isoforms
@@ -59,6 +52,11 @@ options:
                         be called default: 0.05, only isoforms that make up
                         more than 5 percent of the gene locus are reported.
                         Set to 0 for max recall
+  --trust_strand        specify if you want FLAIR to trust the stranding of
+                        the input reads and not attempt strand correction
+  --trust_ends          specify if you want FLAIR to trust the ends of the
+                        input reads - a more stringent way of requiring read
+                        ends to match the ends of transcript models
   --no_stringent        specify if all supporting reads don't need to be full-
                         length (aligned to first and last exons of
                         transcript). Use this for fragmented libraries, with
@@ -71,13 +69,6 @@ options:
                         sequences and only want transcript detection from the
                         genomic alignment. Will be slightly faster but less
                         accurate if the annotation is good
-  -n NO_REDUNDANT, --no_redundant NO_REDUNDANT
-                        For each unique splice junction chain, report options
-                        include: none-- multiple supported TSSs/TESs chosen
-                        for each set of splice junctions (modulated by
-                        max_ends); longest--single TSS/TES chosen to maximize
-                        length; best_only--single most supported TSS/TES used
-                        in conjunction chosen (none)
   --max_ends MAX_ENDS   maximum number of TSS/TES picked per isoform (1) make
                         higher for more precise end detection
   --filter FILTER       Report options include: nosubset--any isoforms that
@@ -86,8 +77,15 @@ options:
                         support; comprehensive--default set + all subset
                         isoforms; ginormous--comprehensive set + single exon
                         subset isoforms
+  --keep_sup            specify if you want to keep supplementary alignments
+                        to define isoforms
   --quality QUALITY     minimum mapping quality threshold to consider genomic
                         alignments for defining transcripts
+  --allow_paralogs      specify if want to allow reads to be assigned to
+                        multiple paralogs with equivalent alignment
+  -t THREADS, --threads THREADS
+                        number of threads to run with - related to
+                        parallel_mode
   --parallel_mode PARALLEL_MODE
                         parallelization mode. Default: "auto:1GB" This
                         indicates an automatic threshold where if the file is
@@ -96,30 +94,24 @@ options:
                         of non-overlapping reads. Other modes: bychrom,
                         byregion, auto:xGB - for setting the auto threshold,
                         it must be in units of GB.
-  --keep_intermediate   specify if intermediate and temporary files are to be
-                        kept for debugging. Intermediate files include:
-                        promoter-supported reads file, read assignments to
-                        firstpass isoforms
-  --keep_sup            specify if you want to keep supplementary alignments
-                        to define isoforms
-  --end_norm_dist END_NORM_DIST
-                        specify the number of basepairs to extend transcript
-                        ends if you want to normalize them across transcripts
-                        in a gene and extend them
-  --output_endpos       specify if you want to output a separate file with
-                        corrected read end positions. For development purposes
-  --output_bam          output intermediate bams aligned to the transcriptome.
-                        Only works with --keep_intermediate, for debugging
   --fusion_breakpoints FUSION_BREAKPOINTS
                         for fusion detection only - bed file containing
                         locations of fusion breakpoints on the synthetic
                         genome
-  --allow_paralogs      specify if want to allow reads to be assigned to
-                        multiple paralogs with equivalent alignment
+  --keep_intermediate   specify if intermediate and temporary files are to be
+                        kept for debugging. Intermediate files include:
+                        promoter-supported reads file, read assignments to
+                        firstpass isoforms
   --generate_map        specify this argument to generate a txt file of read-
                         isoform assignments
-  --trust_strand        specify if you want FLAIR to trust the stranding of
-                        the input reads and not attempt strand correction
-  --trust_ends          specify if you want FLAIR to trust the ends of the
-                        input reads - a more stringent way of requiring read
-                        ends to match the ends of transcript models
+  --output_bam          output intermediate bams aligned to the transcriptome.
+                        Only works with --keep_intermediate, for debugging
+
+required named arguments:
+  -b GENOME_ALIGNED_BAM, --genome_aligned_bam GENOME_ALIGNED_BAM
+                        Sorted and indexed bam file aligned to the genome
+  -g GENOME, --genome GENOME
+                        FastA of reference genome, can be minimap2 indexed
+  --sample_name SAMPLE_NAME
+                        name of sample - this will be added as metadata to
+                        your output files

@@ -25,13 +25,13 @@ class FlairBed(Bed):
     This enforces the transcript_id and name columns having the same value
     """
     __slots__ = ("gene_id", "ref_transcript_id", "ref_gene_mappings", "read_support",
-                 "frac_support", "productivity", "transcript_class", "fused_genes", "pos_in_fusion")
+                 "frac_support", "productivity", "transcript_class", "fused_genes", "pos_in_fusion", "samples")
 
     def __init__(self, chrom, chromStart, chromEnd, name=None, *, score=None, strand=None,
                  thickStart=None, thickEnd=None, itemRgb=None, blocks=None,
                  gene_id=None, ref_transcript_id=None, ref_gene_mappings=None,
                  read_support=None, frac_support=None, productivity=None, transcript_class='basic',
-                 fused_genes=(), pos_in_fusion=None):
+                 fused_genes=(), pos_in_fusion=None, samples=None):
         super().__init__(chrom=chrom, chromStart=chromStart, chromEnd=chromEnd,
                          name=name, score=score, strand=strand, thickStart=thickStart, thickEnd=thickEnd,
                          itemRgb=itemRgb, blocks=blocks, numStdCols=12)
@@ -44,6 +44,7 @@ class FlairBed(Bed):
         self.transcript_class = transcript_class
         self.fused_genes = fused_genes
         self.pos_in_fusion = pos_in_fusion
+        self.samples = samples
         if itemRgb is None:
             self.itemRgb = self._get_rgb()
 
@@ -86,7 +87,8 @@ class FlairBed(Bed):
                     defaultIfNone(self.productivity, ''),
                     self.transcript_class,
                     strArrayJoin(self.fused_genes),
-                    defaultIfNone(self.pos_in_fusion, '')
+                    defaultIfNone(self.pos_in_fusion, ''),
+                    strArrayJoin(self.samples),
                     ])
         return row
 
@@ -106,6 +108,7 @@ class FlairBed(Bed):
         bed.transcript_class = row[18]
         bed.fused_genes = strArraySplit(row[19])
         bed.pos_in_fusion = int(row[20]) if row[20] != '' else None
+        bed.samples = strArraySplit(row[21])
         return bed
 
     @classmethod
@@ -135,6 +138,8 @@ class FlairBed(Bed):
             my_attrs.append(('fused_genes', self.fused_genes))
         if self.pos_in_fusion is not None:
             my_attrs.append(('pos_in_fusion', self.pos_in_fusion))
+        if self.samples is not None:
+            my_attrs.append(('samples', self.samples))
         return my_attrs
 
 

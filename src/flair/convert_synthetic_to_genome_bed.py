@@ -246,7 +246,7 @@ def convert_synthetic_isos(isoformsbed, readmapfile, readsfile, breakpointfile, 
                         outbed = FlairBed(genomicchr, chromStart, chromEnd, name=bed.name, score=bed.score, strand=locusdir, blocks=blocks,
                                           gene_id=fusion_id, ref_gene_mappings=ref_gene_info, thickStart=thickStart, thickEnd=thickEnd,
                                           read_support=bed.read_support, frac_support=bed.frac_support, productivity=bed.productivity, transcript_class='fusion',
-                                          fused_genes=tuple(flair_genes), pos_in_fusion=fusion_order)
+                                          fused_genes=tuple(flair_genes), pos_in_fusion=fusion_order, samples=bed.samples)
                         outbed.write(out)
                     freadsfinal.update(isoreadsup[iso])
     out.close()

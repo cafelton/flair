@@ -176,14 +176,15 @@ def convert_to_bed12(readrec):
     return bed
 
 def convert_to_flair_bed(readrec, thickStart=None, thickEnd=None, itemRgb=None,
-                         read_support=None, frac_support=None, productivity=None):
+                         read_support=None, frac_support=None, productivity=None, samples=None):
     if read_support is not None:
         readrec.score = read_support
     transcript_class = 'basic' if len(readrec.gene.gene_desc) == 1 else 'readthrough'
     bed = FlairBed(readrec.chrom, readrec.start, readrec.end, readrec.name, score=readrec.score, strand=readrec.strand,
                    thickStart=thickStart, thickEnd=thickEnd, itemRgb=itemRgb,
                    gene_id=readrec.gene_id, ref_transcript_id=readrec.ref_transcript_id, ref_gene_mappings=readrec.gene.gene_desc,
-                   read_support=read_support, frac_support=frac_support, productivity=productivity, transcript_class=transcript_class)
+                   read_support=read_support, frac_support=frac_support, productivity=productivity, 
+                   transcript_class=transcript_class, samples=samples)
     add_blocks_from_readrec(bed, readrec)
     return bed
 

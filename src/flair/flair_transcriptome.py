@@ -39,26 +39,27 @@ MIN_POLYA_FRAC_DIFF_FOR_SE_STRANDING = 0.1
 def get_args():
     parser = argparse.ArgumentParser(description='generates confident transcript models directly from a bam file '
                                                  'of aligned long rna-seq reads')
-    parser.add_argument('-b', '--genome_aligned_bam', required=True,
-                        help='Sorted and indexed bam file aligned to the genome')
-    parser.add_argument('-g', '--genome', type=str, required=True,
-                        help='FastA of reference genome, can be minimap2 indexed')
-    parser.add_argument('-o', '--output', default='flair',
-                        help='output file name base for FLAIR isoforms (default: flair)')
-    parser.add_argument('-t', '--threads', type=int, default=12,
-                        help='number of threads to run with - related to parallel_mode')
+    required = parser.add_argument_group('required named arguments')
+    required.add_argument('-b', '--genome_aligned_bam', required=True,
+                          help='Sorted and indexed bam file aligned to the genome')
+    required.add_argument('-g', '--genome', type=str, required=True,
+                          help='FastA of reference genome, can be minimap2 indexed')
+    required.add_argument('--sample_name', required=True,
+                          help='name of sample - this will be added as metadata to your output files')
+    parser.add_argument('-o', '--output',
+                        help='output file name base for FLAIR isoforms, if not provided, output will default to sample_name.')
+
     parser.add_argument('-f', '--gtf', dest="annot_gtf", default=None,
                         help='GTF annotation file, used for identifying annotated isoforms')
-
-    mutexc = parser.add_mutually_exclusive_group(required=False)
-    mutexc.add_argument('--junction_tab', help='short-read junctions in SJ.out.tab format. '
+    parser.add_argument('--junction_tab', help='short-read junctions in SJ.out.tab format. '
                                                'Use this option if you aligned your short-reads with STAR, '
                                                'STAR will automatically output this file')
-    mutexc.add_argument('--junction_bed', help='short-read junctions in bed format '
+    parser.add_argument('--junction_bed', help='short-read junctions in bed format '
                                                '(can be generated from long-read alignment with intron-prospector)')
     parser.add_argument('--junction_support', type=int, default=2,
                         help='if providing short-read junctions, minimum junction support required to keep junction. '
                              'If your junctions file is in bed format, the score field will be used for read support.')
+
     parser.add_argument('--ss_window', type=int, default=15,
                         help='window size for correcting splice sites (15)')
     parser.add_argument('-w', '--end_window', type=int, default=100,
@@ -72,6 +73,12 @@ def get_args():
                         help='''minimum fraction of gene locus support for isoform to be called
                         default: 0.05, only isoforms that make up more than 5 percent of the gene
                         locus are reported. Set to 0 for max recall''')
+
+    parser.add_argument('--trust_strand', default=False, action='store_true',
+                        help='''specify if you want FLAIR to trust the stranding of the input reads and not attempt strand correction''')
+    parser.add_argument('--trust_ends', default=False, action='store_true',
+                        help='''specify if you want FLAIR to trust the ends of the input reads - a more stringent way of requiring read ends to match the ends of transcript models''')
+
     parser.add_argument('--no_stringent', default=False, action='store_true',
                         help='''specify if all supporting reads don't need to be full-length
                         (aligned to first and last exons of transcript).  Use this for fragmented libraries,
@@ -84,11 +91,7 @@ def get_args():
                         an initial alignment to the annotated sequences and only want transcript
                         detection from the genomic alignment.
                          Will be slightly faster but less accurate if the annotation is good''')
-    parser.add_argument('-n', '--no_redundant', default='none',
-                        help='''For each unique splice junction chain, report options include:
-                        none-- multiple supported TSSs/TESs chosen for each set of splice junctions (modulated by max_ends);
-                        longest--single TSS/TES chosen to maximize length;
-                        best_only--single most supported TSS/TES used in conjunction chosen (none)''')
+
     parser.add_argument('--max_ends', type=int, default=1,
                         help='maximum number of TSS/TES picked per isoform (1) make higher for more precise end detection')
     parser.add_argument('--filter', default='nosubset',
@@ -97,48 +100,42 @@ def get_args():
                         bysupport--subset isoforms are removed based on support;
                         comprehensive--default set + all subset isoforms;
                         ginormous--comprehensive set + single exon subset isoforms''')
+
+    parser.add_argument('--keep_sup', default=False, action='store_true',
+                        help='''specify if you want to keep supplementary alignments to define isoforms''')
     parser.add_argument('--quality', default=1, type=int,
                         help='minimum mapping quality threshold to consider genomic alignments for defining transcripts')
+    parser.add_argument('--allow_paralogs', default=False, action='store_true',
+                        help='specify if want to allow reads to be assigned to multiple paralogs with equivalent alignment')
+
+    parser.add_argument('-t', '--threads', type=int, default=12,
+                        help='number of threads to run with - related to parallel_mode')
     parser.add_argument('--parallel_mode', default='auto:1GB',
                         help='''parallelization mode. Default: "auto:1GB" This indicates an automatic threshold where
                             if the file is less than 1GB, parallelization is done by chromosome, but if it's larger,
                             parallelization is done by region of non-overlapping reads. Other modes: bychrom, byregion,
                             auto:xGB - for setting the auto threshold, it must be in units of GB.''')
-    # parser.add_argument('--predict_cds', default=False, action='store_true',
-    #                     help='specify if you want to predict the CDS of the final isoforms. '
-    #                          'Will be output in the final bed file but not the gtf file. '
-    #                          'Productivity annotation is also added in the name field, '
-    #                          'which is detailed further in the predictProductivity documentation')
+
+    parser.add_argument('--fusion_breakpoints',
+                        help='''for fusion detection only - bed file containing locations of fusion breakpoints on the synthetic genome''')
+
     parser.add_argument('--keep_intermediate', default=False, action='store_true',
                         help='''specify if intermediate and temporary files are to be kept for debugging.
                         Intermediate files include: promoter-supported reads file,
                         read assignments to firstpass isoforms''')
-    parser.add_argument('--keep_sup', default=False, action='store_true',
-                        help='''specify if you want to keep supplementary alignments to define isoforms''')
-    parser.add_argument('--end_norm_dist', type=int,
-                        help='specify the number of basepairs to extend transcript ends if you want to '
-                             'normalize them across transcripts in a gene and extend them')
-    parser.add_argument('--output_endpos', default=False, action='store_true',
-                        help='specify if you want to output a separate file with corrected read end positions. '
-                             'For development purposes')
+
+    parser.add_argument('--generate_map', default=False, action='store_true',
+                        help='''specify this argument to generate a txt file of read-isoform assignments''')
     parser.add_argument('--output_bam', default=False, action='store_true',
                         help='output intermediate bams aligned to the transcriptome. '
                              'Only works with --keep_intermediate, for debugging')
-    parser.add_argument('--fusion_breakpoints',
-                        help='''for fusion detection only - bed file containing locations of fusion breakpoints on the synthetic genome''')
-    parser.add_argument('--allow_paralogs', default=False, action='store_true',
-                        help='specify if want to allow reads to be assigned to multiple paralogs with equivalent alignment')
-    parser.add_argument('--generate_map', default=False, action='store_true',
-                        help='''specify this argument to generate a txt file of read-isoform assignments''')
-    parser.add_argument('--trust_strand', default=False, action='store_true',
-                        help='''specify if you want FLAIR to trust the stranding of the input reads and not attempt strand correction''')
-    parser.add_argument('--trust_ends', default=False, action='store_true',
-                        help='''specify if you want FLAIR to trust the ends of the input reads - a more stringent way of requiring read ends to match the ends of transcript models''')
 
     args = parser.parse_args()
     args.parallel_mode = parallel_mode_parse(parser, args.parallel_mode)
     # args.trust_ends = False
     args.remove_internal_priming = False
+    if args.output is None:
+        args.output = args.sample_name
 
     if not os.path.exists(args.genome_aligned_bam):
         parser.error(f'Aligned reads file path does not exist: {args.genome_aligned_bam}')
@@ -206,7 +203,7 @@ def transcriptome_align_and_count(args, input_reads, align_ref_fasta, ref_bed, o
         trimmedreads=trimmedreads,
         generate_map=generate_map,
         output_endpos=output_endpos,
-        end_norm_dist=args.end_norm_dist or 0,
+        end_norm_dist=0,
         stringent=stringent,
         allow_UTR_indels=True,  # is_annot,
         output_bam=output_bam,
@@ -544,21 +541,15 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
     if not args.no_align_to_annot and len(annots.transcripts) > 0:
         # logging.info('generating transcriptome reference')
         # this part generates the fasta file for the annotation
-        if args.end_norm_dist is not None:
-            transcript_to_strand, transcript_to_new_exons = \
-                generate_transcriptome_reference(temp_prefix, annots, chrom, genome,
-                                                 normalize_ends=True,
-                                                 add_length_at_ends=args.end_norm_dist)
-        else:
-            transcript_to_strand, transcript_to_new_exons = \
-                generate_transcriptome_reference(temp_prefix, annots, chrom, genome)
+        transcript_to_strand, transcript_to_new_exons = \
+            generate_transcriptome_reference(temp_prefix, annots, chrom, genome)
         # FIXME: make a TSV
         clipping_file = temp_prefix + '.reads.genomicclipping.txt'
         transcriptome_align_and_count(args, temp_prefix + '.reads.fasta',
                                       temp_prefix + '.annotated_transcripts.fa',
                                       temp_prefix + '.annotated_transcripts.bed',
                                       temp_prefix + '.matchannot.counts.txt',
-                                      temp_prefix + '.matchannot.read.map.txt', True,
+                                      None, True,
                                       clipping_file,
                                       temp_prefix + '.annotated_transcripts_uniquebound.txt')
         for line in open(temp_prefix + '.matchannot.ends.tsv'):
@@ -567,16 +558,6 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
             start_sj_index, start_sj_dist, start_tend_dist, end_sj_index, end_sj_dist, end_tend_dist = [int(x) if x != 'None' else None for x in line[2:]]
             if start_sj_index != 'None':  # not a single exon transcript
                 read_to_transcript[read] = (transcript, start_sj_index, start_sj_dist, end_sj_index, end_sj_dist)
-    else:
-        # create empty output files
-        # FIXME: why doesn't this create all of them?
-        # FIXME: change above logic so file open all happens in one place
-        with (open(temp_prefix + '.matchannot.counts.txt', 'w'),
-              open(temp_prefix + '.matchannot.read.map.txt', 'w')):
-            pass
-        if args.output_endpos:
-            with open(temp_prefix + '.ends.tsv', 'w') as _:
-                pass
     # good_align_to_annot = set(good_align_to_annot)
     # return good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs
     return read_to_transcript
@@ -597,21 +578,18 @@ def filter_ends_allow_multiple(isoforms, sjc_support, max_ends):
         filtered = filtered[:max_ends]  # select only top most supported ends
         return filtered
 
-def filter_ends_single_best(isoforms, no_redundant_mode):
+def filter_ends_single_best(isoforms):
     """Pick single best end from junction chain.
     Returns list with single Isoform object."""
     # best_only uses the default sorting, doesn't require additional action
-    if no_redundant_mode == 'longest':
-        isoforms.sort(reverse=True, key=lambda x: x.length)
-
     # Pick single best end and merge all reads into it
     best = isoforms[0]
     for iso in isoforms[1:]:
         best.reads.extend(iso.reads)
     return [best]
 
-def filter_ends_by_redundant_and_support(isoforms, sjc_support, se_support, no_redundant, max_ends):
-    """Sort ends, then select best ones based on support and value of args.no_redundant."""
+def filter_ends_by_redundant_and_support(isoforms, sjc_support, se_support, max_ends):
+    """Sort ends, then select best ones based on support and max_ends"""
     # First by weighted score, then by length
     if isoforms[0].juncs == ():
         support = se_support
@@ -625,12 +603,12 @@ def filter_ends_by_redundant_and_support(isoforms, sjc_support, se_support, no_r
         logging.debug(f"isoform group dropped: insufficient support ({junc_support} < {support}): {isoforms[0].chrom}:{isoforms[0].start}-{isoforms[0].end}")
         return []
 
-    if no_redundant == 'none':
+    if max_ends > 1:
         # Allow multiple ends per junction chain
         return filter_ends_allow_multiple(isoforms, support, max_ends)
     else:
         # Pick single best end
-        return filter_ends_single_best(isoforms, no_redundant)
+        return filter_ends_single_best(isoforms)
 
 
 def _write_unfiltered_ends(isoforms, fh):
@@ -664,7 +642,7 @@ class CandidateIsoforms:
 def _filter_isos_by_redundant_and_support(args, isoforms, candidates, iso_fh):
     # this assumes single exons are pre-grouped by overlap
     # previously treated single exons separately due to them being in larger groups
-    filtered_isoforms = filter_ends_by_redundant_and_support(isoforms, args.sjc_support, args.se_support, args.no_redundant, args.max_ends)
+    filtered_isoforms = filter_ends_by_redundant_and_support(isoforms, args.sjc_support, args.se_support, args.max_ends)
     for isoform in filtered_isoforms:
         candidates.add(isoform)
         convert_to_bed12(isoform).write(iso_fh)
@@ -1113,11 +1091,6 @@ def write_transcript_ends_bed(args, temp_prefix, suffix, read_to_final_transcrip
                     Bed(chrom, int(start), int(end), name=t_name + '|' + r,
                         score=0, strand=strand).write(ends_fh)
 
-def write_transcript_ends_beds(args, temp_prefix, read_to_final_transcript, ends_fh):
-    # FIXME: these are not real TSVs
-    for suffix in ['.matchannot.ends.tsv']:
-        write_transcript_ends_bed(args, temp_prefix, suffix, read_to_final_transcript, ends_fh)
-
 def _iso_passes_support_filter(args, iso, gene, num_exons, iso_to_counts, gene_to_tot):
     if iso not in iso_to_counts:
         return False, 0
@@ -1128,13 +1101,11 @@ def _iso_passes_support_filter(args, iso, gene, num_exons, iso_to_counts, gene_t
         else:
             return (count >= args.se_support) and (count / gene_to_tot[gene][1]) >= args.frac_support, (count / gene_to_tot[gene][1])
 
-def generate_full_set_empty_intermediate_files(file_prefix, end_norm_dist, no_align_to_annot):
+def generate_full_set_empty_intermediate_files(file_prefix, generate_map):
     suffixes = ['.firstpass.reallyunfiltered.bed', '.firstpass.unfiltered.bed', '.firstpass.bed', '.isoforms.bed',
-                '.isoform.read.map.txt', '.isoforms.gtf', '.isoforms.fa', '.isoform.counts.txt']
-    if end_norm_dist:
-        suffixes.extend(['.read_ends.bed', '.matchannot.ends.tsv'])
-    if not no_align_to_annot:
-        suffixes.extend(['.matchannot.counts.txt', '.matchannot.read.map.txt'])
+                '.isoforms.gtf', '.isoforms.fa', '.isoform.counts.txt']
+    if generate_map:
+        suffixes.append('.isoform.read.map.txt')
     generate_empty_intermediate_files(file_prefix, suffixes)
 
 def generate_empty_intermediate_files(file_prefix, suffixes):
@@ -1164,7 +1135,6 @@ def calc_final_iso_support(read_ends_file, final_transcript_objs, trust_ends):
             else:
                 tlen = final_transcript_objs[transcript].end - final_transcript_objs[transcript].start
                 rlen = tlen - (start_tend_dist + end_tend_dist)
-                # FIXME might not work if end_norm_dist is set - add test, or just remove end_norm_dist
                 if rlen > (tlen / 2):
                     iso_to_counts[transcript][0] += 1
                     gene_to_tot[gene][1] += 1
@@ -1192,7 +1162,7 @@ def write_final_isoform_output(partition, args, final_transcript_objs, iso_to_co
                 thickStart, thickEnd, productivity = predict_prod_temp(final_transcript_objs[tname], annots.start_codon_count,
                                                                        annots.gene_to_cds_starts, annots.transcript_to_nmd_except, genome)
                 convert_to_flair_bed(final_transcript_objs[tname], thickStart=thickStart, thickEnd=thickEnd, read_support=iso_to_counts[tname][0],
-                                     frac_support=my_frac_support, productivity=productivity).write(iso_fh)
+                                     frac_support=my_frac_support, productivity=productivity, samples=(args.sample_name,)).write(iso_fh)
                 seq_fh.write('>' + final_transcript_objs[tname].name + '\n')
                 seq_fh.write(final_transcript_objs[tname].get_sequence(genome) + '\n')
 
@@ -1222,7 +1192,7 @@ def _run_region(*, partition, gtf_data, junction_corrector, args):
     num_reads, clipping_file = generate_genomic_alignment_read_to_clipping_file(partition.file_prefix, bam_file, region)
 
     if num_reads == 0:
-        generate_full_set_empty_intermediate_files(partition.file_prefix, args.end_norm_dist, args.no_align_to_annot)
+        generate_full_set_empty_intermediate_files(partition.file_prefix, args.generate_map)
         return
 
     # aligning to reference transcriptome, then identifying reads that match well to reference transcripts
@@ -1262,19 +1232,15 @@ def _run_region(*, partition, gtf_data, junction_corrector, args):
         # also normalizes transcript ends (temporarily extends ends so that transcript end alignment does not drive transcript assignment during transcriptome alignment)
         # writes out bed and fa files
         logging.info('realigning to firstpass and getting final isoforms')
-        if args.end_norm_dist is not None:
-            write_firstpass(partition.file_prefix, region.name, firstpass, annots, genome,
-                            normalize_ends=True, add_length_at_ends=args.end_norm_dist, unique_bound=iso_to_unique_bound)
-        else:
-            write_firstpass(partition.file_prefix, region.name, firstpass, annots, genome, unique_bound=iso_to_unique_bound)
-            # logging.info('identifying good match to firstpass')
+        write_firstpass(partition.file_prefix, region.name, firstpass, annots, genome, unique_bound=iso_to_unique_bound)
 
         # aligns to firstpass transcriptome, identifies best read -> isoform alignment for each read, then gets read counts per isoform
+        read_map_file = partition.output_path('isoform.read.map.txt') if args.generate_map else None
         transcriptome_align_and_count(args, partition.output_path('reads.fasta'),
                                       partition.output_path('firstpass.fa'),
                                       partition.output_path('firstpass.bed'),
                                       partition.output_path('isoform.counts.txt'),
-                                      partition.output_path('isoform.read.map.txt'), False,  # say is not annot, requires stringent, returns different end values
+                                      read_map_file, False,  # say is not annot, requires stringent, returns different end values
                                       partition.output_path('reads.genomicclipping.txt'),
                                       partition.output_path('firstpass.uniquebound.txt'))
     else:
@@ -1291,15 +1257,11 @@ def _run_region(*, partition, gtf_data, junction_corrector, args):
     genome.close()
 
 def combine_chunks(args, output, partitions):
-    files_to_combine = ['.isoforms.bed', '.isoform.read.map.txt', '.isoforms.fa', '.isoform.counts.txt']
+    files_to_combine = ['.isoforms.bed', '.isoforms.fa', '.isoform.counts.txt']
+    if args.generate_map:
+        files_to_combine.append('.isoform.read.map.txt')
     if args.keep_intermediate:
         files_to_combine.extend(['.firstpass.reallyunfiltered.bed', '.firstpass.unfiltered.bed', '.firstpass.bed'])
-    if args.end_norm_dist:
-        files_to_combine.extend(('.read_ends.bed', '.matchannot.ends.tsv'))
-    # if args.predict_cds:
-    #     files_to_combine.append('.isoforms.CDS.bed')
-    # if not args.no_align_to_annot:
-    #     files_to_combine.extend(['.matchannot.counts.txt', '.matchannot.read.map.txt'])
     combine_temp_files_by_suffix(output, [p.file_prefix for p in partitions], files_to_combine)
 
 def get_new_ids(output):
@@ -1341,15 +1303,16 @@ def fix_ids_fa_file(iso_hash_to_ID, oldfile, newfile):
             if last:
                 fh.write(line)
 
-def fix_iso_labels(output):
+def fix_iso_labels(output, generate_map):
     iso_hash_to_ID = get_new_ids(output)
-    fix_ids_txt_file(iso_hash_to_ID, output + '.isoform.read.map.txt', output + '.isoform.read.map.newids.txt')
     fix_ids_txt_file(iso_hash_to_ID, output + '.isoform.counts.txt', output + '.isoform.counts.newids.txt')
     fix_ids_fa_file(iso_hash_to_ID, output + '.isoforms.fa', output + '.isoforms.newids.fa')
     pipettor.run([('mv', output + '.isoforms.newids.bed', output + '.isoforms.bed')])
-    pipettor.run([('mv', output + '.isoform.read.map.newids.txt', output + '.isoform.read.map.txt')])
     pipettor.run([('mv', output + '.isoform.counts.newids.txt', output + '.isoform.counts.txt')])
     pipettor.run([('mv', output + '.isoforms.newids.fa', output + '.isoforms.fa')])
+    if generate_map:
+        fix_ids_txt_file(iso_hash_to_ID, output + '.isoform.read.map.txt', output + '.isoform.read.map.newids.txt')
+        pipettor.run([('mv', output + '.isoform.read.map.newids.txt', output + '.isoform.read.map.txt')])
 
 ####
 # main
@@ -1388,7 +1351,7 @@ def flair_transcriptome():
     combine_chunks(args, args.output, runner.partitions)
 
     #  simplify isoform and gene ID hashes in bed file, read map, counts, and fa files
-    fix_iso_labels(args.output)
+    fix_iso_labels(args.output, args.generate_map)
 
     # index of column with gene id in extracols, then additional column indexes + names
     bed_to_gtf(args.output + '.isoforms.bed', args.output + '.isoforms.gtf', is_flair_bed=True)

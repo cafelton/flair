@@ -22,12 +22,14 @@ def parse_args():
     required = parser.add_argument_group('required named arguments')
     required.add_argument('-g', '--genome',
                           type=str, required=True, help='FastA of reference genome')
-    parser.add_argument('-f', '--gtf',
+    required.add_argument('-f', '--gtf',
                         type=str, required=True, help='GTF annotation file, used for renaming FLAIR isoforms to annotated isoforms and adjusting TSS/TESs')
     required.add_argument('-b', '--genome_aligned_bam',
                           type=str, required=True, help='bam file of chimeric reads from genomic alignment from flair align')
-    parser.add_argument('-o', '--output', default='flair.fusion',
-                        help='output file name base for FLAIR isoforms (default: flair.collapse)')
+    required.add_argument('--sample_name', required=True,
+                        help='name of sample, will be added as metadata to output files')
+    parser.add_argument('-o', '--output',
+                        help='output file name base for FLAIR isoforms, defaults to sample_name if not provided')
     parser.add_argument('-t', '--threads', type=int, default=4,
                         help='minimap2 number of threads (4)')
     parser.add_argument('--minfragmentsize', type=int, default=40,
@@ -362,6 +364,7 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
                              # '--no_stringent',
                              '--no_align_to_annot',
                              '--fusion_breakpoints', args.output + '-syntheticBreakpointLoc.bed',
+                             '--sample_name', args.sample_name,
                              '--output', args.output + '.syntheticAligned.flair',]
     # only include junction if any where found
     junc_bed = args.output + '.syntheticAligned.SJ.bed'

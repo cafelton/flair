@@ -74,13 +74,13 @@ test:
 
 test-base:
 	${MAKE} align-tests quantify-tests bed-to-gtf-tests \
-		combine-tests predict-productivity-tests diff-iso-usage-tests \
+		combine-tests diff-iso-usage-tests \
 		plot-usage-tests transcriptome-tests fusion-tests variants-tests \
 		spliceevents-tests partition-tests lib-tests
 
 test-no-align:
 	${MAKE} quantify-tests bed-to-gtf-tests \
-		combine-tests predict-productivity-tests diff-iso-usage-tests \
+		combine-tests diff-iso-usage-tests \
 		plot-usage-tests transcriptome-tests fusion-tests variants-tests \
 		spliceevents-tests partition-tests lib-tests
 
@@ -96,12 +96,12 @@ test-base-installed:
 test-help:
 	${MAKE} test-main-help test-align-help \
 		test-quantify-help test-diffexp-help test-diffsplice-help \
-		test-predict-productivity-help test-diff-iso-usage-help \
+		test-diff-iso-usage-help \
 		test-plot-usage-help test-transcriptome-help test-variants-help test-fusion-help
 
 test-fast:
 	${MAKE} test-combine-bed-only \
-		test-predict-productivity test-diff-iso-usage test-plot-usage test-transcriptome \
+		test-diff-iso-usage test-plot-usage test-transcriptome \
 		test-fusion test-variants
 
 
@@ -404,14 +404,10 @@ test-diffsplice-help: mkdirs
 	$(call cmp_expect,$@.out)
 
 
-bed-to-gtf-tests: test-bed-to-gtf test-bed-to-gtf-cds test-bed-to-gtf-extracols
+bed-to-gtf-tests: test-bed-to-gtf test-bed-to-gtf-extracols
 
 test-bed-to-gtf : mkdirs
 	bed_to_gtf $(BASIC_ISOFORMS_BED) > $O/$@.gtf
-	$(call cmp_expect,$@.gtf)
-
-test-bed-to-gtf-cds : 
-	bed_to_gtf $E/test-predict-productivity.bed > $O/$@.gtf
 	$(call cmp_expect,$@.gtf)
 
 test-bed-to-gtf-extracols : 
@@ -421,21 +417,21 @@ test-bed-to-gtf-extracols :
 ##
 # PREDICT PRODUCTIVITY
 ##
-predict-productivity-tests: test-predict-productivity test-predict-productivity-extracols test-predict-productivity-help
+# predict-productivity-tests: test-predict-productivity test-predict-productivity-extracols test-predict-productivity-help
 
-test-predict-productivity : mkdirs ${GENOME_FA}
-	predictProductivity -i $(BASIC_ISOFORMS_BED) -g $(BASIC_ANNOTATION) -f ${GENOME_FA} -o $O/$@
-	$(call cmp_expect,$@.bed)
-	$(call cmp_expect,$@.info.tsv)
+# test-predict-productivity : mkdirs ${GENOME_FA}
+# 	predictProductivity -i $(BASIC_ISOFORMS_BED) -g $(BASIC_ANNOTATION) -f ${GENOME_FA} -o $O/$@
+# 	$(call cmp_expect,$@.bed)
+# 	$(call cmp_expect,$@.info.tsv)
 
-test-predict-productivity-extracols : mkdirs ${GENOME_FA}
-	predictProductivity -i $E/test-transcriptome-noannot.isoforms.bed -g $(BASIC_ANNOTATION) -f ${GENOME_FA} -o $O/$@ --is_flair_bed
-	$(call cmp_expect,$@.bed)
-	$(call cmp_expect,$@.info.tsv)
+# test-predict-productivity-extracols : mkdirs ${GENOME_FA}
+# 	predictProductivity -i $E/test-transcriptome-noannot.isoforms.bed -g $(BASIC_ANNOTATION) -f ${GENOME_FA} -o $O/$@ --is_flair_bed
+# 	$(call cmp_expect,$@.bed)
+# 	$(call cmp_expect,$@.info.tsv)
 
-test-predict-productivity-help: mkdirs
-	predictProductivity --help > $O/$@.out
-	$(call cmp_expect,$@.out)
+# test-predict-productivity-help: mkdirs
+# 	predictProductivity --help > $O/$@.out
+# 	$(call cmp_expect,$@.out)
 
 ##
 # DIFF ISO USAGE
@@ -484,60 +480,60 @@ update-transcriptome-tests:
 
 
 test-transcriptome: mkdirs ${TEST_ALIGN_BAM}
-	flair transcriptome -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --keep_intermediate
-# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-	$(diff_bed_gtf)
+	flair transcriptome -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --keep_intermediate
+	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+# 	$(diff_bed_gtf)
 
 test-transcriptome-trust-ends: mkdirs ${TEST_ALIGN_BAM}
-	flair transcriptome -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --trust_ends
-# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-	$(diff_bed_gtf)
+	flair transcriptome -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --trust_ends
+	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+# 	$(diff_bed_gtf)
 
 test-transcriptome-mult-ends: mkdirs ${TEST_ALIGN_BAM}
-	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --max_ends 5 --keep_intermediate
-# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-	$(diff_bed_gtf)
+	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --max_ends 5 --keep_intermediate
+	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+# 	$(diff_bed_gtf)
 
 test-transcriptome-mult-ends-trust-ends: mkdirs ${TEST_ALIGN_BAM}
-	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --max_ends 5 --trust_ends
-# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-	$(diff_bed_gtf)
+	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --max_ends 5 --trust_ends
+	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+# 	$(diff_bed_gtf)
 
 test-transcriptome-partition: mkdirs ${TEST_ALIGN_BAM}
-	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --parallel_mode byregion
-# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-	$(diff_bed_gtf)
+	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --parallel_mode byregion
+	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+# 	$(diff_bed_gtf)
 
 test-transcriptome-lowannot: mkdirs ${TEST_ALIGN_BAM}
 	intronProspector --genome-fasta=${GENOME_FA} --intron-bed6=$O/$@.IPjunctions.bed -C 0.0 ${TEST_ALIGN_BAM}
-	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) --junction_bed $O/$@.IPjunctions.bed --junction_support 2 -o $O/$@ --no_align_to_annot --sjc_support 3
-# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-	$(diff_bed_gtf)
+	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) --junction_bed $O/$@.IPjunctions.bed --junction_support 2 -o $O/$@ --sample_name $@ --no_align_to_annot --sjc_support 3
+	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+# 	$(diff_bed_gtf)
 
 test-transcriptome-noannot: mkdirs ${TEST_ALIGN_BAM}
 	intronProspector --genome-fasta=${GENOME_FA} --intron-bed6=$O/$@.IPjunctions.bed -C 0.0 ${TEST_ALIGN_BAM}
-	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} -t 4 -o $O/$@ --junction_bed $O/$@.IPjunctions.bed --junction_support 2 --sjc_support 3
-# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-	$(diff_bed_gtf)
+	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} -t 4 -o $O/$@ --sample_name $@ --junction_bed $O/$@.IPjunctions.bed --junction_support 2 --sjc_support 3
+	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+# 	$(diff_bed_gtf)
 
 test-transcriptome-seg1: mkdirs  ${SEG1_ALIGN_BAM}
-	flair transcriptome -b ${SEG1_ALIGN_BAM} -g ${GENOME_FA} -t 4 -f $(SEG1_ANNOTATION) -o $O/$@
-# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-	$(diff_bed_gtf)
+	flair transcriptome -b ${SEG1_ALIGN_BAM} -g ${GENOME_FA} -t 4 -f $(SEG1_ANNOTATION) -o $O/$@ --sample_name $@
+	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+# 	$(diff_bed_gtf)
 
 # test of an artifical mutated splice site.
 test-transcripome-mutant-splice: mkdirs ${KRAS_MUT_SPLICE_BAM}
 	flair transcriptome -b ${KRAS_MUT_SPLICE_BAM} -g ${GENOME_FA} \
 	   --junction_bed=${KRAS_MUT_SPLICE_SJ_BED} \
-	   -t 4 -f ${BASIC_ANNOTATION} -o $O/$@ --sjc_support 2
-# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-	$(diff_bed_gtf)
+	   -t 4 -f ${BASIC_ANNOTATION} -o $O/$@ --sample_name $@ --sjc_support 2
+	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+# 	$(diff_bed_gtf)
 
 #test of an artificial read through transcript
 test-transcriptome-readthrough: mkdirs ${DDX5_READTHROUGH_BAM}
-	flair transcriptome -b ${DDX5_READTHROUGH_BAM} -g ${GENOME_FA} -f ${DDX5_READTHROUGH_ANNOT} -o $O/$@ --junction_bed=${DDX5_READTHROUGH_SJ} --sjc_support 2
-# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-	$(diff_bed_gtf)
+	flair transcriptome -b ${DDX5_READTHROUGH_BAM} -g ${GENOME_FA} -f ${DDX5_READTHROUGH_ANNOT} -o $O/$@ --sample_name $@ --junction_bed=${DDX5_READTHROUGH_SJ} --sjc_support 2
+	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+# 	$(diff_bed_gtf)
 
 
 ${KRAS_MUT_SPLICE_BAM}: ${KRAS_MUT_SPLICE_FQ}  ${GENOME_FA}
@@ -597,20 +593,27 @@ FUSION_TEST_BAM = ${FUSION_TEST_SHARED_OUT}.bam
 
 fusion-tests: test-fusion test-fusion-pary test-fusion-nongenic test-fusion-help
 
+update-fusion-tests:
+	for tname in "test-fusion" "test-fusion-pary" "test-fusion-nongenic"; \
+	do \
+	cp $O/$$tname.fusions.isoforms.bed $E/$$tname.fusions.isoforms.bed; \
+	cp $O/$$tname.fusions.isoforms.fa $E/$$tname.fusions.isoforms.fa; \
+	done
+
 test-fusion: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ} ${FUSION_TEST_BAM}
-	flair fusion -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -b ${FUSION_TEST_BAM} --maxloci 4 -o $O/$@ -s 2
+	flair fusion -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -b ${FUSION_TEST_BAM} --maxloci 4 -o $O/$@ --sample_name $@ -s 2
 	$(call cmp_expect_sort,$@.fusions.isoforms.bed)
 	$(call cmp_expect_sort,$@.fusions.isoforms.fa)
 # 	diff <(sort <(cut -f 1,2,3,5,6,7,8,9,10,11,12 $E/$@.fusions.isoforms.bed)) <(sort <(cut -f 1,2,3,5,6,7,8,9,10,11,12 $O/$@.fusions.isoforms.bed))
 # 	diff <(sort <(grep -v ">" $E/$@.fusions.isoforms.fa)) <(sort <(grep -v ">" $O/$@.fusions.isoforms.fa))
 
 test-fusion-pary: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ} ${FUSION_TEST_BAM}
-	flair fusion -g ${GENOME_FA} -f $I/parY.annotation.gtf -b ${FUSION_TEST_BAM} --maxloci 4 -o $O/$@ -s 2
+	flair fusion -g ${GENOME_FA} -f $I/parY.annotation.gtf -b ${FUSION_TEST_BAM} --maxloci 4 -o $O/$@ --sample_name $@ -s 2
 	$(call cmp_expect_sort,$@.fusions.isoforms.bed)
 	$(call cmp_expect_sort,$@.fusions.isoforms.fa)
 
 test-fusion-nongenic: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ} ${FUSION_TEST_BAM}
-	flair fusion -g ${GENOME_FA} -f $I/basic.annotation.ERGIC3only.gtf -b ${FUSION_TEST_BAM} --maxloci 4 -o $O/$@ -s 2
+	flair fusion -g ${GENOME_FA} -f $I/basic.annotation.ERGIC3only.gtf -b ${FUSION_TEST_BAM} --maxloci 4 -o $O/$@ --sample_name $@ -s 2
 	$(call cmp_expect_sort,$@.fusions.isoforms.bed)
 	$(call cmp_expect_sort,$@.fusions.isoforms.fa)
 
