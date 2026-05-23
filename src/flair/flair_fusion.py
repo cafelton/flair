@@ -23,11 +23,11 @@ def parse_args():
     required.add_argument('-g', '--genome',
                           type=str, required=True, help='FastA of reference genome')
     required.add_argument('-f', '--gtf',
-                        type=str, required=True, help='GTF annotation file, used for renaming FLAIR isoforms to annotated isoforms and adjusting TSS/TESs')
+                          type=str, required=True, help='GTF annotation file, used for renaming FLAIR isoforms to annotated isoforms and adjusting TSS/TESs')
     required.add_argument('-b', '--genome_aligned_bam',
                           type=str, required=True, help='bam file of chimeric reads from genomic alignment from flair align')
     required.add_argument('--sample_name', required=True,
-                        help='name of sample, will be added as metadata to output files')
+                          help='name of sample, will be added as metadata to output files')
     parser.add_argument('-o', '--output',
                         help='output file name base for FLAIR isoforms, defaults to sample_name if not provided')
     parser.add_argument('-t', '--threads', type=int, default=4,

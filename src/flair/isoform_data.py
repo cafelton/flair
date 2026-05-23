@@ -183,7 +183,7 @@ def convert_to_flair_bed(readrec, thickStart=None, thickEnd=None, itemRgb=None,
     bed = FlairBed(readrec.chrom, readrec.start, readrec.end, readrec.name, score=readrec.score, strand=readrec.strand,
                    thickStart=thickStart, thickEnd=thickEnd, itemRgb=itemRgb,
                    gene_id=readrec.gene_id, ref_transcript_id=readrec.ref_transcript_id, ref_gene_mappings=readrec.gene.gene_desc,
-                   read_support=read_support, frac_support=frac_support, productivity=productivity, 
+                   read_support=read_support, frac_support=frac_support, productivity=productivity,
                    transcript_class=transcript_class, samples=samples)
     add_blocks_from_readrec(bed, readrec)
     return bed
