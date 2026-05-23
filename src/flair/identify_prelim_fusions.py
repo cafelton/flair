@@ -158,8 +158,7 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
                 else:
                     readToAligns[rname].append([(readlen - qend, refend), (readlen - qstart, refstart), genename, readdir, refchr])
             else:
-                genename = read.reference_name.split('_')[-1].split('.')[0]
-                tname = '_'.join(read.reference_name.split('_')[:-1])
+                tname, genename = read.reference_name.split('|')
                 refchr, genedir = genetoinfo[genename][0], genetoinfo[genename][3]  # can do this because already required the read to be forward strand
                 refstart = getGenomicPreciseLoc(tname, refstart, genedir, intronLocs, intronToGenome)
                 refend = getGenomicPreciseLoc(tname, refend, genedir, intronLocs, intronToGenome)

@@ -1,0 +1,8 @@
+expected/test-transcriptome.isoforms.bed
+expected/test-transcriptome-mult-ends.isoforms.bed
+expected/test-transcriptome-mutant-splice.isoforms.bed
+expected/test-transcriptome-readthrough.isoforms.bed
+expected/test-fusion.fusions.isoforms.bed
+expected/test-transcriptome-seg1-badannot.isoforms.bed
+expected/test-transcriptome-seg1-badannot-multends.isoforms.bed
+input/test-transcriptome-seg1-badannot-multends-chromshifted.isoforms.bed

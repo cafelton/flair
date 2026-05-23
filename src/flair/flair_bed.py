@@ -31,7 +31,7 @@ class FlairBed(Bed):
                  thickStart=None, thickEnd=None, itemRgb=None, blocks=None,
                  gene_id=None, ref_transcript_id=None, ref_gene_mappings=None,
                  read_support=None, frac_support=None, productivity=None, transcript_class='basic',
-                 fused_genes=(), pos_in_fusion=None, samples=None):
+                 fused_genes=(), pos_in_fusion=None, samples=()):
         super().__init__(chrom=chrom, chromStart=chromStart, chromEnd=chromEnd,
                          name=name, score=score, strand=strand, thickStart=thickStart, thickEnd=thickEnd,
                          itemRgb=itemRgb, blocks=blocks, numStdCols=12)
@@ -101,14 +101,14 @@ class FlairBed(Bed):
                   itemRgb=base.itemRgb, blocks=base.blocks)
         bed.gene_id = parseStrOrNone(row[12])
         bed.ref_transcript_id = parseStrOrNone(row[13])
-        bed.ref_gene_mappings = strArraySplit(row[14])
+        bed.ref_gene_mappings = tuple(strArraySplit(row[14]))
         bed.read_support = int(row[15]) if row[15] != '' else None
         bed.frac_support = float(row[16]) if row[16] != '' else None
         bed.productivity = parseStrOrNone(row[17])
         bed.transcript_class = row[18]
-        bed.fused_genes = strArraySplit(row[19])
+        bed.fused_genes = tuple(strArraySplit(row[19]))
         bed.pos_in_fusion = int(row[20]) if row[20] != '' else None
-        bed.samples = strArraySplit(row[21])
+        bed.samples = tuple(strArraySplit(row[21]))
         return bed
 
     @classmethod
@@ -126,20 +126,20 @@ class FlairBed(Bed):
         if self.ref_transcript_id is not None:
             my_attrs.append(('ref_transcript_id', self.ref_transcript_id))
         if len(self.ref_gene_mappings) > 0:
-            my_attrs.append(('ref_gene_mappings', self.ref_gene_mappings))
+            my_attrs.append(('ref_gene_mappings', strArrayJoin(self.ref_gene_mappings)))
         if self.read_support is not None:
             my_attrs.append(('read_support', self.read_support))
         if self.frac_support is not None:
-            my_attrs.append(('frac_support', self.frac_support))
+            my_attrs.append(('frac_support', round(self.frac_support, 4)))
         if self.productivity is not None:
             my_attrs.append(('productivity', self.productivity))
         my_attrs.append(('transcript_class', self.transcript_class))
         if len(self.fused_genes) > 0:
-            my_attrs.append(('fused_genes', self.fused_genes))
+            my_attrs.append(('fused_genes', strArrayJoin(self.fused_genes)))
         if self.pos_in_fusion is not None:
             my_attrs.append(('pos_in_fusion', self.pos_in_fusion))
-        if self.samples is not None:
-            my_attrs.append(('samples', self.samples))
+        if len(self.samples) > 0:
+            my_attrs.append(('samples', strArrayJoin(self.samples)))
         return my_attrs
 
 

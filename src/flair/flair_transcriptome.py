@@ -970,8 +970,10 @@ def get_gene_name_firstpass(isoform, annots, annot_name_to_used_counts):
         gene_id = _find_gene_id_by_overlap(isoform, annots)
     return gene_id, transcript_id
 
-def add_gene_isoform(genes, gene_id, isoform, strand):
+def add_gene_isoform(genes, gene_id, isoform, strand, is_novel):
     hashed_id = int(hashlib.md5(','.join(gene_id).encode('utf-8')).hexdigest(), 16)
+    if is_novel:
+        gene_id = ()
     if hashed_id not in genes:
         genes[hashed_id] = Gene(hashed_id, gene_id, isoform.chrom, strand)
     # this command also sets the gene_id in the isoform object
@@ -996,7 +998,7 @@ def build_genes(firstpass, annots, region_chrom, sjc_with_overlap_groups):
             # removing this strand correction breaks the unusual junction (due to underlying variant?) test
             # currently just using first gene in list, ideally would use the most 5' annotated gene for this strand correction, if we want to do strand correction at all
             isoform.strand = annots.gene_to_strand[gene_id[0]]
-            add_gene_isoform(genes, gene_id, isoform, annots.gene_to_strand[gene_id[0]])
+            add_gene_isoform(genes, gene_id, isoform, annots.gene_to_strand[gene_id[0]], is_novel=False)
         else:
             novel_gene_isos_to_group[isoform.strand].append((isoform.start, isoform.end, iso_key))
 
@@ -1010,7 +1012,7 @@ def _assign_novel_gene_group(genes, chrom, strand, group_start, last_end, curr_g
     """Create a Gene for a group of novel overlapping isoforms."""
     gene_id = f'{chrom}:{group_start}-{last_end}:{strand}'
     for s, e, n in curr_group:
-        add_gene_isoform(genes, gene_id, firstpass[n], strand)
+        add_gene_isoform(genes, gene_id, firstpass[n], strand, is_novel=True)
 
 def generate_non_gene_iso_groups_strand(genes, novel_gene_isos_to_group, strand, chrom, firstpass):
     """Group novel isoforms by coordinate overlap and create Gene objects."""

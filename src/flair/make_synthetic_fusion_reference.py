@@ -57,7 +57,7 @@ genome = pysam.FastaFile(args.g)
 # When making synthetic references, simulatneously make gtf annotation file - make sure to convert 3' side values based on
 
 for rec in gtf_record_parser(args.a, include_features={'gene', 'exon', 'start_codon'}, attrs=GtfAttrsSet.ALL):
-    genename = rec.gene_id.replace('_', '-').split('.')[0]
+    genename = rec.gene_id
     if genename in fgenes:
         if rec.feature == 'gene':
             # learned that can't assume that transcript appears in anno only once - two diff ENSG can have same hugo name

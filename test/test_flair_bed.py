@@ -123,7 +123,7 @@ def test_parse_round_trip():
     assert bed.transcript_id == "tx1"
     assert bed.gene_id == "geneA"
     assert bed.ref_transcript_id == "refTx1"
-    assert bed.ref_gene_mappings == ["g1:tx1", "g2:tx2"]
+    assert bed.ref_gene_mappings == ("g1:tx1", "g2:tx2")
     assert bed.read_support == 5
     assert bed.frac_support == 0.5
     assert bed.productivity == "PRO"
@@ -136,7 +136,7 @@ def test_parse_empty_string_extras_become_none():
     bed = FlairBed.parse(row)
     assert bed.gene_id is None
     assert bed.ref_transcript_id is None
-    assert bed.ref_gene_mappings == []
+    assert bed.ref_gene_mappings == ()
     assert bed.read_support == 0
     assert bed.frac_support == 0.0
 

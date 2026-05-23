@@ -293,46 +293,43 @@ endef
 ###
 
 define combine_diff
-	$(call cmp_expect,$@/combined.bed)
-	$(call cmp_expect,$@/combined.counts.tsv)
-	$(call cmp_expect,$@/combined.isoform.map.txt)
-endef
-define combine_fa_diff
-	$(call combine_diff)
-	$(call cmp_expect,$@/combined.fa)
+	$(call cmp_expect,$@.combined.isoforms.bed)
+	$(call cmp_expect,$@.combined.isoform.counts.tsv)
 endef
 
-combine-tests: test-combine-bed-only test-combine-bed-fa test-combine-bed-fa-map
+
+combine-tests: test-combine test-combine-files test-combine-nose test-combine-10pct test-combine-multends test-combine-multends-10pct
 
 update-combine-tests:
-	for tname in "test-combine-bed-only" "test-combine-bed-fa" "test-combine-bed-fa-map"; \
+	for tname in "test-combine" "test-combine-files" "test-combine-nose" "test-combine-10pct" "test-combine-multends" "test-combine-multends-10pct"; \
 	do \
-	cp $O/$$tname/combined.bed $E/$$tname/combined.bed; \
-	cp $O/$$tname/combined.counts.tsv $E/$$tname/combined.counts.tsv; \
-	cp $O/$$tname/combined.isoform.map.txt $E/$$tname/combined.isoform.map.txt; \
-	done
-	for tname in "test-combine-bed-fa" "test-combine-bed-fa-map"; \
-	do \
-	cp $O/$$tname/combined.fa $E/$$tname/combined.fa; \
+	cp $O/$$tname.combined.isoforms.bed $E/$$tname.combined.isoforms.bed; \
+	cp $O/$$tname.combined.isoform.counts.tsv $E/$$tname.combined.isoform.counts.tsv; \
 	done
 
-test-combine-bed-only: mkdirs
-	rm -rf $O/$@
-	mkdir -p $O/$@
-	flair combine --manifest=input/bed-only.combine_manifest.txt -o $O/$@/combined
-	$(call combine_diff)
+test-combine: mkdirs
+	flair combine --manifest $I/combine_manifest_bed-only.txt --genome ${GENOME_FA} -o $O/$@
+	$(combine_diff)
 
-test-combine-bed-fa: mkdirs
-	rm -rf $O/$@
-	mkdir -p $O/$@
-	flair combine --manifest=input/bed-fa.combine_manifest.txt -o $O/$@/combined
-	$(call combine_fa_diff)
+test-combine-files: mkdirs
+	flair combine --genome ${GENOME_FA} -o $O/$@ --bed_paths expected/test-transcriptome.isoforms.bed,expected/test-transcriptome-mult-ends.isoforms.bed,expected/test-transcriptome-mutant-splice.isoforms.bed,expected/test-transcriptome-readthrough.isoforms.bed,expected/test-fusion.fusions.isoforms.bed,expected/test-transcriptome-seg1-badannot.isoforms.bed,expected/test-transcriptome-seg1-badannot-multends.isoforms.bed,input/test-transcriptome-seg1-badannot-multends-chromshifted.isoforms.bed
+	$(combine_diff)
 
-test-combine-bed-fa-map: mkdirs
-	rm -rf $O/$@
-	mkdir -p $O/$@
-	flair combine --manifest=input/bed-fa-map.combine_manifest.txt -o $O/$@/combined
-	$(call combine_fa_diff)
+test-combine-nose: mkdirs
+	flair combine --manifest $I/combine_manifest_bed-only.txt --genome ${GENOME_FA} -o $O/$@ --remove_se
+	$(combine_diff)
+
+test-combine-10pct: mkdirs
+	flair combine --manifest $I/combine_manifest_bed-only.txt --genome ${GENOME_FA} -o $O/$@ --minpercentusage 10
+	$(combine_diff)
+
+test-combine-multends: mkdirs
+	flair combine --manifest $I/combine_manifest_bed-only.txt --genome ${GENOME_FA} -o $O/$@ --max_ends 10
+	$(combine_diff)
+
+test-combine-multends-10pct: mkdirs
+	flair combine --manifest $I/combine_manifest_bed-only.txt --genome ${GENOME_FA} -o $O/$@ --max_ends 10 --minpercentusage 10
+	$(combine_diff)
 
 ###
 # FLAIR QUANTIFY
@@ -465,18 +462,17 @@ test-plot-usage-help: mkdirs
 ###
 
 transcriptome-tests: test-transcriptome test-transcriptome-partition test-transcriptome-lowannot test-transcriptome-noannot \
-                    test-transcriptome-seg1 test-transcripome-mutant-splice test-transcriptome-readthrough test-transcriptome-mult-ends \
-					test-transcriptome-trust-ends test-transcriptome-mult-ends-trust-ends test-transcriptome-help
+                    test-transcriptome-seg1 test-transcriptome-mutant-splice test-transcriptome-readthrough test-transcriptome-mult-ends \
+					test-transcriptome-trust-ends test-transcriptome-mult-ends-trust-ends test-transcriptome-seg1-badannot test-transcriptome-seg1-badannot-multends test-transcriptome-help
 
 update-transcriptome-tests:
 	for tname in "test-transcriptome" "test-transcriptome-partition" "test-transcriptome-lowannot" "test-transcriptome-noannot" \
-	"test-transcriptome-seg1" "test-transcripome-mutant-splice" "test-transcriptome-readthrough" "test-transcriptome-mult-ends" \
-	"test-transcriptome-trust-ends" "test-transcriptome-mult-ends-trust-ends"; \
+	"test-transcriptome-seg1" "test-transcriptome-mutant-splice" "test-transcriptome-readthrough" "test-transcriptome-mult-ends" \
+	"test-transcriptome-trust-ends" "test-transcriptome-mult-ends-trust-ends" "test-transcriptome-seg1-badannot" "test-transcriptome-seg1-badannot-multends"; \
 	do \
 	cp $O/$$tname.isoforms.bed $E/$$tname.isoforms.bed; \
 	cp $O/$$tname.isoforms.gtf $E/$$tname.isoforms.gtf; \
 	done
-	cp $O/test-transcriptome.isoforms.as $E/test-transcriptome.isoforms.as
 
 
 test-transcriptome: mkdirs ${TEST_ALIGN_BAM}
@@ -521,8 +517,18 @@ test-transcriptome-seg1: mkdirs  ${SEG1_ALIGN_BAM}
 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
 # 	$(diff_bed_gtf)
 
+test-transcriptome-seg1-badannot: mkdirs  ${SEG1_ALIGN_BAM}
+	flair transcriptome -b ${SEG1_ALIGN_BAM} -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@
+# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+# 	$(diff_bed_gtf)
+
+test-transcriptome-seg1-badannot-multends: mkdirs  ${SEG1_ALIGN_BAM}
+	flair transcriptome -b ${SEG1_ALIGN_BAM} -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --max_ends 4 --se_support 2 --filter ginormous
+# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+# 	$(diff_bed_gtf)
+
 # test of an artifical mutated splice site.
-test-transcripome-mutant-splice: mkdirs ${KRAS_MUT_SPLICE_BAM}
+test-transcriptome-mutant-splice: mkdirs ${KRAS_MUT_SPLICE_BAM}
 	flair transcriptome -b ${KRAS_MUT_SPLICE_BAM} -g ${GENOME_FA} \
 	   --junction_bed=${KRAS_MUT_SPLICE_SJ_BED} \
 	   -t 4 -f ${BASIC_ANNOTATION} -o $O/$@ --sample_name $@ --sjc_support 2

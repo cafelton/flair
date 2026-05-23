@@ -22,4 +22,5 @@ string	productivity;	"PRO (productive), PTC (premature termination codon, i.e. u
 string	transcript_class;	"basic (most isoforms), readthrough (multiple adjacent genes), fusion (from Flair fusion, multiple non-contiguous genes - will have 2+ bed entries per isoform)"
 string	fused_genes;	"array of FLAIR gene IDs of genes involved in fusion"
 string	pos_in_fusion;	"for fusion isoform fragments, what location in the fusion this fragment is from. Starts counting at 0"
+string  samples;        "list of samples that this isoform originates from"
 )

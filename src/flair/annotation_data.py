@@ -75,7 +75,6 @@ def annot_data_from_gtf(gtf_data, region):
     return annots
 
 def _process_transcript(annots, region, region_map, trans):
-    trans.gene_id = trans.gene_id.replace('_', '-')
     exons = [Exon(exon.start, exon.end) for exon in trans.exons]
     sorted_exons = sorted(exons)
     t_start = sorted_exons[0].start

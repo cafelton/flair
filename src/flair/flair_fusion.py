@@ -107,7 +107,7 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
     if not os.path.exists(transcriptchimbam):
         logging.info('aligning to transcriptome and getting chimeric reads')
         args.annotated_bed = args.output + '.annotated_transcripts.bed'
-        gtf_to_bed(args.annotated_bed, args.gtf, include_gene=True)
+        gtf_to_bed(args.annotated_bed, args.gtf, include_gene=True, name_sep='|')
         args.annotated_fa = args.output + '.annotated_transcripts.fa'
         get_sequence_from_bed(args.genome, args.output + '.annotated_transcripts.bed', args.annotated_fa)
 
@@ -123,12 +123,12 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
         pipettor.run([('mv', args.output + '.transcriptomealigned.chim.sorted.bam', transcriptchimbam)])
         pysam.index(transcriptchimbam)
 
-    print('reading gtf')
+    logging.info('reading gtf')
     genetoinfo, genetoexons, genetoname = {}, {}, {}
     chrom_to_gene_pos = {}
     gene_to_all_exons, juncs_to_gene = {}, {}
     for rec in gtf_record_parser(args.gtf, include_features={'gene', 'exon', 'transcript'}, attrs=GtfAttrsSet.ALL):
-        gene_id = rec.gene_id.replace('_', '-').split('.')[0]
+        gene_id = rec.gene_id
         if rec.feature == 'gene':
             genetoinfo[gene_id] = [rec.chrom, rec.start, rec.end, rec.strand, []]
             genetoname[gene_id] = rec.gene_name if rec.gene_name else gene_id
@@ -148,7 +148,7 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
             end5 = rec.start if rec.strand == '+' else rec.end
             genetoinfo[gene_id][-1].append(end5)
 
-    print('continuing to parse annot')
+    logging.info('continuing to parse annot')
     # FOR JUNCS TO GENE, DO BY CHROM AS WELL
     for chrom in chrom_to_gene_pos:
         chrom_to_gene_pos[chrom] = sorted(chrom_to_gene_pos[chrom])
@@ -198,16 +198,16 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
 
     gene_to_paralogs = get_paralog_ref(os.path.realpath(__file__).split('flair_fusion')[0] + 'dgd_Hsa_all_v71.tsv')
 
-    print('loading transcriptomic chimeras')
+    logging.info('loading transcriptomic chimeras')
     tchim = id_chimeras('transcriptomic', transcriptchimbam, genetoinfo, chrom_to_gene_pos,
                         gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname,
                         args.support, maxloci=args.maxloci, reqdisttostart=args.max_dist_to_TSS,
                         maxpromiscuity=4, intronLocs=intronLocs, intronToGenome=intronToGenome)
-    print('loading genomic chimeras')
+    logging.info('loading genomic chimeras')
 
     combchim = id_chimeras('genomic', genomechimbam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname, args.support, maxloci=args.maxloci, reqdisttostart=args.max_dist_to_TSS, maxpromiscuity=4)
 
-    print('combining genomic and transcriptomic')
+    logging.info('combining genomic and transcriptomic')
     #
     for f in tchim:
         if f not in combchim:
@@ -246,7 +246,7 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
         report_nofusions(args.output)
         return
 
-    print('obtaining fusion reads')
+    logging.info('obtaining fusion reads')
 
     seenreads = set()
     freadsname = args.output + '.fusionreads.prelim.fa'
@@ -264,7 +264,7 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
     bamfile.close()
     out_fa.close()
 
-    print('generating synthetic reference')
+    logging.info('generating synthetic reference')
 
     makesynthcommand = ['python3', path + 'make_synthetic_fusion_reference.py', '-a', args.gtf, '-g', args.genome,
                         '-o', args.output, '-c', args.output + '.prelimfusions.bed']
@@ -278,7 +278,7 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
     faidxcommand = ['samtools', 'faidx', args.output + '-syntheticFusionGenome.fa']
     pipettor.run([faidxcommand])
 
-    print('aligning to synthetic fusion genome')
+    logging.info('aligning to synthetic fusion genome')
     align_to_synth_genome(args.output + '-syntheticFusionGenome.fa', freadsname, args.output + '.syntheticAligned.nosplice.bam',
                           ['-s', str(args.minfragmentsize), '-t', str(args.threads), '-un', '--secondary=no', '-G', '1000k'])
     align_to_synth_genome(args.output + '-syntheticFusionGenome.fa', freadsname, args.output + '.syntheticAligned.withsplice.bam',
@@ -314,7 +314,7 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
                    args.output + '.syntheticAligned.nosplice.bam', args.output + '.syntheticAligned.nosplice.bam.bai',
                    args.output + '.syntheticAligned.unsorted.bam')])
 
-    print('getting ss')
+    logging.info('getting ss')
     ipcmd = ('intronProspector', f'--genome-fasta={args.output}-syntheticFusionGenome.fa', f'--intron-bed6={args.output}.syntheticAligned.IPSJ.bed', '-C', '0.0', '--sj-filter=all', f'{args.output}.syntheticAligned.bam')
     pipettor.run([ipcmd])
 
@@ -371,11 +371,11 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
     if os.path.exists(junc_bed) and (os.path.getsize(junc_bed) > 0):
         transcriptome_command.extend(['--junction_bed', junc_bed])
 
-    print('generating fusion transcriptome')
-    print(' '.join(transcriptome_command))
+    logging.info('generating fusion transcriptome')
+    logging.info(' '.join(transcriptome_command))
     pipettor.run(transcriptome_command)
 
-    print('converting coordinates from synthetic to genomic')
+    logging.info('converting coordinates from synthetic to genomic')
     convert_synthetic_isos(args.output + '.syntheticAligned.flair.isoforms.bed',
                            args.output + '.syntheticAligned.flair.isoform.read.map.txt', freadsname,
                            args.output + '-syntheticBreakpointLoc.bed', args.output + '.fusions.isoforms.bed', args.min_dist_between_bp)
