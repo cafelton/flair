@@ -109,13 +109,16 @@ def quantify(isoform_sequences=''):  # noqa: C901 - FIXME: reduce complexity
 
     logging.info(f'Writing counts to {args.o}.counts.tsv')
     countData = dict()
+    for line in open(args.i):
+        if line[0] == '>':
+            iso = line[1:].rstrip().split()[0]
+            countData[iso] = np.zeros(len(samData))
+
     for num, data in enumerate(samData):
         sample, group, batch, readFile, samOut = data
         for line in open(samOut + '.counts.txt'):
             line = line.rstrip().split('\t')
             iso, numreads = line[0], line[1]
-            if iso not in countData:
-                countData[iso] = np.zeros(len(samData))
             countData[iso][num] = numreads
 
     countMatrix = open(args.o + '.counts.tsv', 'w')

@@ -37,6 +37,8 @@ TRANSCRIPT_EXON_FEATURES = TRANSCRIPT_FEATURES | EXON_FEATURES | START_CODON_FEA
 FLAIR_ATTRS = frozenset(('gene_id', 'gene_name', 'transcript_id'))
 FLAIR_TRANSCRIPT_ATTRS = FLAIR_ATTRS | frozenset(('tag', ))
 
+BASIC_ATTRS = frozenset(('gene_id', 'transcript_id'))
+
 _ALL_ATTR_RE = re.compile(r'(\w+)\s+(?:"([^"]*)"|([^;\s]+))')
 
 class GtfAttrsSet(Enum):
@@ -45,6 +47,7 @@ class GtfAttrsSet(Enum):
     which is faster for flair's use."""
     ALL = 'all'
     FLAIR = 'flair'
+    BASIC = 'basic'
 
 
 class GtfParseError(Exception):
@@ -301,6 +304,15 @@ def _find_flair_attr_value(attrs_str: str, key: str):
     val_end = attrs_str.find('"', val_start)
     return attrs_str[val_start:val_end] if val_end >= 0 else None
 
+def _parse_basic_attributes(attrs_str: str, record_type: str) -> Attrs:
+    """Fast-path parser for BASIC_ATTRS using str.find() instead of regex."""
+    attrs = {}
+    for key in BASIC_ATTRS:
+        value = _find_flair_attr_value(attrs_str, key)
+        if value is not None:
+            attrs[key] = value
+    return attrs
+
 def _parse_flair_attributes(attrs_str: str, record_type: str) -> Attrs:
     """Fast-path parser for FLAIR_ATTRS using str.find() instead of regex."""
     attrs = {}
@@ -317,6 +329,7 @@ def _parse_flair_attributes(attrs_str: str, record_type: str) -> Attrs:
 _ATTRS_SET_TO_PARSER = {
     GtfAttrsSet.ALL: _parse_all_attributes,
     GtfAttrsSet.FLAIR: _parse_flair_attributes,
+    GtfAttrsSet.BASIC: _parse_basic_attributes,
 }
 
 
@@ -455,6 +468,31 @@ def gtf_record_parser(gtf_file: str, *, include_features: StrSetNone = None, att
     """Parse GTF file, yields GtfRecord GtfTranscript, GtfExon, or GtfCDS objects.
     File maybe compressed"""
     yield from _gtf_record_iter(gtf_file, include_features, _ATTRS_SET_TO_PARSER[attrs])
+
+
+def load_gtf_to_gene_data(gtf_file):
+    gene_to_transcript_to_exons = {}
+    for rec in _gtf_record_iter(gtf_file, include_features=frozenset(['exon']), attrs_parser=_ATTRS_SET_TO_PARSER[GtfAttrsSet.BASIC]):
+        if isinstance(rec, GtfExon):
+            if rec.gene_id not in gene_to_transcript_to_exons:
+                gene_to_transcript_to_exons[rec.gene_id] = {}
+            if rec.transcript_id not in gene_to_transcript_to_exons[rec.gene_id]:
+                gene_to_transcript_to_exons[rec.gene_id][rec.transcript_id] = []
+            gene_to_transcript_to_exons[rec.gene_id][rec.transcript_id].append(rec)
+    gene_to_exons, gene_to_juncs = {}, {}
+    for gene in gene_to_transcript_to_exons:
+        gene_to_exons[gene] = set()
+        gene_to_juncs[gene] = set()
+        for transcript in gene_to_transcript_to_exons[gene]:
+            exons = gene_to_transcript_to_exons[gene][transcript]
+            gene_to_exons[gene].update(set(exons))
+            exons.sort(key=lambda x: (x.start, x.end))
+            for i in range(len(exons) - 1):
+                gene_to_juncs[gene].add((exons[i].end, exons[i + 1].start))
+        gene_to_exons[gene] = sorted(list(gene_to_exons[gene]), key=lambda x: (x.start, x.end))
+        gene_to_juncs[gene] = sorted(list(gene_to_juncs[gene]))
+    return gene_to_exons, gene_to_juncs
+
 
 def _load_gtf_records(gtf_file, gtf_data, transcript_id_to_exons, transcript_id_to_cds_recs, transcript_id_to_start_codons, include_features, attrs_parser):
     for rec in _gtf_record_iter(gtf_file, include_features, attrs_parser):

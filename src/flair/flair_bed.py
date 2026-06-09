@@ -25,13 +25,13 @@ class FlairBed(Bed):
     This enforces the transcript_id and name columns having the same value
     """
     __slots__ = ("gene_id", "ref_transcript_id", "ref_gene_mappings", "read_support",
-                 "frac_support", "productivity", "transcript_class", "fused_genes", "pos_in_fusion", "samples")
+                 "frac_support", "productivity", "transcript_class", "fused_genes", "pos_in_fusion", "samples", "source_isoform", "allele_group", "aaseq_id")
 
     def __init__(self, chrom, chromStart, chromEnd, name=None, *, score=None, strand=None,
                  thickStart=None, thickEnd=None, itemRgb=None, blocks=None,
                  gene_id=None, ref_transcript_id=None, ref_gene_mappings=None,
                  read_support=None, frac_support=None, productivity=None, transcript_class='basic',
-                 fused_genes=(), pos_in_fusion=None, samples=()):
+                 fused_genes=(), pos_in_fusion=None, samples=(), aaseq_id=None, source_isoform=None, allele_group=None):
         super().__init__(chrom=chrom, chromStart=chromStart, chromEnd=chromEnd,
                          name=name, score=score, strand=strand, thickStart=thickStart, thickEnd=thickEnd,
                          itemRgb=itemRgb, blocks=blocks, numStdCols=12)
@@ -45,6 +45,9 @@ class FlairBed(Bed):
         self.fused_genes = fused_genes
         self.pos_in_fusion = pos_in_fusion
         self.samples = samples
+        self.aaseq_id = aaseq_id
+        self.source_isoform = source_isoform
+        self.allele_group = allele_group
         if itemRgb is None:
             self.itemRgb = self._get_rgb()
 
@@ -89,6 +92,9 @@ class FlairBed(Bed):
                     strArrayJoin(self.fused_genes),
                     defaultIfNone(self.pos_in_fusion, ''),
                     strArrayJoin(self.samples),
+                    defaultIfNone(self.source_isoform, ''),
+                    defaultIfNone(self.allele_group, ''),
+                    defaultIfNone(self.aaseq_id, '')
                     ])
         return row
 
@@ -109,6 +115,9 @@ class FlairBed(Bed):
         bed.fused_genes = tuple(strArraySplit(row[19]))
         bed.pos_in_fusion = int(row[20]) if row[20] != '' else None
         bed.samples = tuple(strArraySplit(row[21]))
+        bed.source_isoform = parseStrOrNone(row[22])
+        bed.allele_group = parseStrOrNone(row[23])
+        bed.aaseq_id = parseStrOrNone(row[24])
         return bed
 
     @classmethod
@@ -121,7 +130,7 @@ class FlairBed(Bed):
         except Exception as ex:
             raise BedException(f"parsing of BED row failed: {row}") from ex
 
-    def get_named_extra_attrs(self):
+    def get_named_extra_attrs(self):  # noqa: C901
         my_attrs = []
         if self.ref_transcript_id is not None:
             my_attrs.append(('ref_transcript_id', self.ref_transcript_id))
@@ -140,6 +149,12 @@ class FlairBed(Bed):
             my_attrs.append(('pos_in_fusion', self.pos_in_fusion))
         if len(self.samples) > 0:
             my_attrs.append(('samples', strArrayJoin(self.samples)))
+        if self.source_isoform is not None:
+            my_attrs.append(('source_isoform', self.source_isoform))
+        if self.allele_group is not None:
+            my_attrs.append(('allele_group', self.allele_group))
+        if self.aaseq_id is not None:
+            my_attrs.append(('aaseq_id', self.aaseq_id))
         return my_attrs
 
 

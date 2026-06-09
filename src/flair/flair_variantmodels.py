@@ -314,7 +314,7 @@ def get_correct_vcf_vars(vcfvars, refname, startpos, endpos):
     if refname in vcfvars:
         return vcfvars[refname]
     else:
-        return None
+        return set()
 
 
 def parse_all_bam_files(sampledata, tempdir, vcfvars, mode=None):  # mode is only necessary for varquant mode
@@ -330,9 +330,9 @@ def parse_all_bam_files(sampledata, tempdir, vcfvars, mode=None):  # mode is onl
                     print(c, 'reads checked')
                 tempfilename = gettempfilename(s.reference_name, mode)
                 myvcfvars = get_correct_vcf_vars(vcfvars, s.reference_name, s.reference_start, s.reference_end)
-                if myvcfvars:
-                    # print('vcf regions: ', len(myvcfvars))
-                    parse_single_bam_read(s, tempdir, myvcfvars, sindex, tempfilename)
+                # print(s.reference_name, myvcfvars)
+                # print('vcf regions: ', len(myvcfvars))
+                parse_single_bam_read(s, tempdir, myvcfvars, sindex, tempfilename)
                 # else:
                 #     print('no vcf vars')
         samfile.close()
@@ -373,7 +373,7 @@ def write_mutsets_for_iso(iso, blocks, mutsetstoreads, outfile, genomepostosuppo
         newmutpos = []
         for m in mutset:  # pos, type, str
             tpos = m[0]
-            genomeset = None
+            genomeset, tomeset = None, None
             for tstart, gstart, bsize, thischr, dir in blocks:
                 if (dir == '+' and tstart <= tpos < tstart + bsize) or (
                         dir == '-' and tstart <= tpos - 1 < tstart + bsize):
@@ -381,14 +381,15 @@ def write_mutsets_for_iso(iso, blocks, mutsetstoreads, outfile, genomepostosuppo
                         genomePos = gstart + (tpos - tstart)
                     else:
                         genomePos = gstart + ((tstart + bsize) - (tpos - 1))
-                    genomeset = (thischr, dir, str(genomePos), str(tpos), m[1], m[2])
+                    genomeset = (thischr, dir, str(genomePos), m[1], m[2])
+                    tomeset = (thischr, dir, str(genomePos), str(tpos), m[1], m[2])
                     break
             if genomeset:
                 if genomeset not in genomepostosupport:
                     genomepostosupport[genomeset] = rcount
                 else:
                     genomepostosupport[genomeset] += rcount
-                newmutpos.append('..'.join(genomeset))
+                newmutpos.append('..'.join(tomeset))
         outfile.write(
             '\t'.join([iso, ','.join(newmutpos), ','.join(mutsetstoreads[mutset])]) + '\n')
     return genomepostosupport
@@ -427,16 +428,22 @@ def get_goodsupport_muts(mutsetstoreads, genomepostosupport):
         allmuts.update(mutset)
     goodmuts = set()
     for m in allmuts:
-        if genomepostosupport[m] >= 3:
+        if genomepostosupport[(m[0], m[1], m[2], m[4], m[5])] >= 3:
             goodmuts.add(m)
-
     goodsupport = {}
+    all_iso_reads = 0
     for mutset in mutsetstoreads:
         filtset = mutset & goodmuts
         if filtset not in goodsupport:
-            goodsupport[filtset] = mutsetstoreads[mutset]
-        else:
-            goodsupport[filtset].update(mutsetstoreads[mutset])
+            goodsupport[filtset] = set()
+        all_iso_reads += len(mutsetstoreads[mutset])
+        goodsupport[filtset].update(mutsetstoreads[mutset])
+    for k in list(goodsupport.keys()):
+        if len(goodsupport[k]) < 2 or len(goodsupport[k]) / all_iso_reads <= 0.05:
+            # print('\tpopping', sorted([int(x[2]) for x in k]), len(goodsupport[k]), round(len(goodsupport[k]) / all_iso_reads, 2))
+            goodsupport.pop(k)
+        # else:
+        #     print('\tkeeping', sorted([int(x[2]) for x in k]), len(goodsupport[k]), round(len(goodsupport[k]) / all_iso_reads, 2))
     return goodsupport
 
 def convert_muts_to_genome_pos(mutpos, thisseq):
@@ -466,6 +473,7 @@ def get_good_support_varisos(genenames, tempdir, isotoseq, numsamples, genomepos
             # for each isoform, get the count of total reads supporting each individual variant
             # also get total reads for isoform
             # for each individual mutation, figure out which ones pass threshold of support
+            # print(iso)
             goodsupport = get_goodsupport_muts(isotomutstringtoreads[iso], genomepostosupport)
 
             for mutpos in goodsupport:

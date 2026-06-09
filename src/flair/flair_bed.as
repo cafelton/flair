@@ -23,4 +23,7 @@ string	transcript_class;	"basic (most isoforms), readthrough (multiple adjacent 
 string	fused_genes;	"array of FLAIR gene IDs of genes involved in fusion"
 string	pos_in_fusion;	"for fusion isoform fragments, what location in the fusion this fragment is from. Starts counting at 0"
 string  samples;        "list of samples that this isoform originates from"
+string	source_isoform;	"if from allele grouping, id of source isoform without considering alleles"
+string	allele_group;	"allele group - unique to gene + variants, multiple isos can share"
+string	aaseq_id;	"id of protein sequence - multiple isos can produce same protein"
 )

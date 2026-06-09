@@ -79,13 +79,13 @@ def test_thick_start_passed_to_super():
 def test_num_columns():
     bed = _make_bed()
     # 12 standard + 6 flair extras
-    assert bed.numColumns == 22
+    assert bed.numColumns == 25
 
 
 def test_to_row_length():
     bed = _make_bed()
     row = bed.toRow()
-    assert len(row) == 22
+    assert len(row) == 25
 
 
 def test_to_row_values():
@@ -114,7 +114,7 @@ def test_parse_round_trip():
     """Build a BED row and parse it back."""
     row = ["chr1", "100", "200", "tx1", "0", "+",
            "100", "200", "0", "1", "100,", "0,",
-           "geneA", "refTx1", "g1:tx1,g2:tx2,", "5", "0.5", "PRO", 'basic', '', '', 'sample1']
+           "geneA", "refTx1", "g1:tx1,g2:tx2,", "5", "0.5", "PRO", 'basic', '', '', 'sample1', '', '', 'FLP001']
     bed = FlairBed.parse(row)
     assert bed.chrom == "chr1"
     assert bed.chromStart == 100
@@ -132,7 +132,7 @@ def test_parse_round_trip():
 def test_parse_empty_string_extras_become_none():
     row = ["chr1", "100", "200", "tx1", "0", "+",
            "100", "200", "0", "1", "100,", "0,",
-           "", "", "", "0", "0.0", "", 'basic', '', '', '']
+           "", "", "", "0", "0.0", "", 'basic', '', '', '', '', '', '']
     bed = FlairBed.parse(row)
     assert bed.gene_id is None
     assert bed.ref_transcript_id is None
@@ -144,7 +144,7 @@ def test_parse_empty_string_extras_become_none():
 def test_reader(tmp_path):
     row = ["chr1", "100", "200", "tx1", "0", "+",
            "100", "200", "0", "1", "100,", "0,",
-           "geneA", "refTx1", "g1:tx1,g2:tx2,", "5", "0.5", "PRO", 'basic', '', '', 'sample1']
+           "geneA", "refTx1", "g1:tx1,g2:tx2,", "5", "0.5", "PRO", 'basic', '', '', 'sample1', '', '', 'FLP001']
     p = tmp_path / "test.bed"
     p.write_text("\t".join(row) + "\n")
     beds = list(FlairBedReader(str(p)))

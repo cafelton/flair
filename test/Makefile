@@ -309,26 +309,32 @@ update-combine-tests:
 
 test-combine: mkdirs
 	flair combine --manifest $I/combine_manifest_bed-only.txt --genome ${GENOME_FA} -o $O/$@
+# 	$(call cmp_expect_bed_simple,$@.combined.isoforms.bed)
 	$(combine_diff)
 
 test-combine-files: mkdirs
 	flair combine --genome ${GENOME_FA} -o $O/$@ --bed_paths expected/test-transcriptome.isoforms.bed,expected/test-transcriptome-mult-ends.isoforms.bed,expected/test-transcriptome-mutant-splice.isoforms.bed,expected/test-transcriptome-readthrough.isoforms.bed,expected/test-fusion.fusions.isoforms.bed,expected/test-transcriptome-seg1-badannot.isoforms.bed,expected/test-transcriptome-seg1-badannot-multends.isoforms.bed,input/test-transcriptome-seg1-badannot-multends-chromshifted.isoforms.bed
+# 	$(call cmp_expect_bed_simple,$@.combined.isoforms.bed)
 	$(combine_diff)
 
 test-combine-nose: mkdirs
 	flair combine --manifest $I/combine_manifest_bed-only.txt --genome ${GENOME_FA} -o $O/$@ --remove_se
+# 	$(call cmp_expect_bed_simple,$@.combined.isoforms.bed)
 	$(combine_diff)
 
 test-combine-10pct: mkdirs
 	flair combine --manifest $I/combine_manifest_bed-only.txt --genome ${GENOME_FA} -o $O/$@ --minpercentusage 10
+# 	$(call cmp_expect_bed_simple,$@.combined.isoforms.bed)
 	$(combine_diff)
 
 test-combine-multends: mkdirs
 	flair combine --manifest $I/combine_manifest_bed-only.txt --genome ${GENOME_FA} -o $O/$@ --max_ends 10
+# 	$(call cmp_expect_bed_simple,$@.combined.isoforms.bed)
 	$(combine_diff)
 
 test-combine-multends-10pct: mkdirs
 	flair combine --manifest $I/combine_manifest_bed-only.txt --genome ${GENOME_FA} -o $O/$@ --max_ends 10 --minpercentusage 10
+# 	$(call cmp_expect_bed_simple,$@.combined.isoforms.bed)
 	$(combine_diff)
 
 ###
@@ -343,6 +349,11 @@ test-quantify: mkdirs ${BASIC_ISOFORMS_OUT_FAI}
 	$(call cmp_expect,$@.counts.tsv)
 	$(call cmp_expect_sort,$@.A1.A.flair.aligned.readtotranscript.txt)
 	$(call cmp_expect,$@.tpm.tsv)
+
+test-quantify-newtranscripts: mkdirs ${BASIC_ISOFORMS_OUT_FAI}
+	rm -rf $O/$@.tmp
+	flair quantify -r $(BASIC_READS_MANIFEST) -i $E/test-transcriptome.isoforms.fa --isoform_bed $E/test-transcriptome.isoforms.bed --generate_map --temp_dir $O/$@.tmp --tpm --sample_id_only -o $O/$@ --output_bam
+	$(call cmp_expect,$@.counts.tsv)
 
 ${TEST_QUANTIFY_B1_BAM}: test-quantify
 
@@ -476,70 +487,70 @@ update-transcriptome-tests:
 
 
 test-transcriptome: mkdirs ${TEST_ALIGN_BAM}
-	flair transcriptome -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --keep_intermediate
-	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-# 	$(diff_bed_gtf)
+	flair transcriptome -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --keep_intermediate --generate_map
+# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+	$(diff_bed_gtf)
 
 test-transcriptome-trust-ends: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --trust_ends
-	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-# 	$(diff_bed_gtf)
+# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+	$(diff_bed_gtf)
 
 test-transcriptome-mult-ends: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --max_ends 5 --keep_intermediate
-	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-# 	$(diff_bed_gtf)
+# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+	$(diff_bed_gtf)
 
 test-transcriptome-mult-ends-trust-ends: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --max_ends 5 --trust_ends
-	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-# 	$(diff_bed_gtf)
+# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+	$(diff_bed_gtf)
 
 test-transcriptome-partition: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --parallel_mode byregion
-	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-# 	$(diff_bed_gtf)
+# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+	$(diff_bed_gtf)
 
 test-transcriptome-lowannot: mkdirs ${TEST_ALIGN_BAM}
 	intronProspector --genome-fasta=${GENOME_FA} --intron-bed6=$O/$@.IPjunctions.bed -C 0.0 ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) --junction_bed $O/$@.IPjunctions.bed --junction_support 2 -o $O/$@ --sample_name $@ --no_align_to_annot --sjc_support 3
-	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-# 	$(diff_bed_gtf)
+# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+	$(diff_bed_gtf)
 
 test-transcriptome-noannot: mkdirs ${TEST_ALIGN_BAM}
 	intronProspector --genome-fasta=${GENOME_FA} --intron-bed6=$O/$@.IPjunctions.bed -C 0.0 ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} -t 4 -o $O/$@ --sample_name $@ --junction_bed $O/$@.IPjunctions.bed --junction_support 2 --sjc_support 3
-	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-# 	$(diff_bed_gtf)
+# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+	$(diff_bed_gtf)
 
 test-transcriptome-seg1: mkdirs  ${SEG1_ALIGN_BAM}
 	flair transcriptome -b ${SEG1_ALIGN_BAM} -g ${GENOME_FA} -t 4 -f $(SEG1_ANNOTATION) -o $O/$@ --sample_name $@
-	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-# 	$(diff_bed_gtf)
+# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+	$(diff_bed_gtf)
 
 test-transcriptome-seg1-badannot: mkdirs  ${SEG1_ALIGN_BAM}
 	flair transcriptome -b ${SEG1_ALIGN_BAM} -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@
 # 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-# 	$(diff_bed_gtf)
+	$(diff_bed_gtf)
 
 test-transcriptome-seg1-badannot-multends: mkdirs  ${SEG1_ALIGN_BAM}
 	flair transcriptome -b ${SEG1_ALIGN_BAM} -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --max_ends 4 --se_support 2 --filter ginormous
 # 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-# 	$(diff_bed_gtf)
+	$(diff_bed_gtf)
 
 # test of an artifical mutated splice site.
 test-transcriptome-mutant-splice: mkdirs ${KRAS_MUT_SPLICE_BAM}
 	flair transcriptome -b ${KRAS_MUT_SPLICE_BAM} -g ${GENOME_FA} \
 	   --junction_bed=${KRAS_MUT_SPLICE_SJ_BED} \
 	   -t 4 -f ${BASIC_ANNOTATION} -o $O/$@ --sample_name $@ --sjc_support 2
-	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-# 	$(diff_bed_gtf)
+# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+	$(diff_bed_gtf)
 
 #test of an artificial read through transcript
 test-transcriptome-readthrough: mkdirs ${DDX5_READTHROUGH_BAM}
 	flair transcriptome -b ${DDX5_READTHROUGH_BAM} -g ${GENOME_FA} -f ${DDX5_READTHROUGH_ANNOT} -o $O/$@ --sample_name $@ --junction_bed=${DDX5_READTHROUGH_SJ} --sjc_support 2
-	$(call cmp_expect_bed_simple,$@.isoforms.bed)
-# 	$(diff_bed_gtf)
+# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+	$(diff_bed_gtf)
 
 
 ${KRAS_MUT_SPLICE_BAM}: ${KRAS_MUT_SPLICE_FQ}  ${GENOME_FA}
@@ -564,18 +575,48 @@ test-transcriptome-help: mkdirs
 # flair variants
 # FIXME need to add better checks for AAseq results, however the inconsistent sorting of the variants leads to inconsistent AAseq IDs which are hard to check
 ###
-variants-tests:  test-variants test-variants-help
+
+B1_GENOME_ALIGNED_BAM = output/B1_1.genomealigned.bam
+B1_LONGSHOT = output/B1_1.genomealigned.longshot.vcf
+ALIGN_LONGSHOT = output/test-align.longshot.vcf
+
+${B1_GENOME_ALIGNED_BAM}: ${GENOME_FA} ${TEST_QUANTIFY_B1_BAM}
+	@mkdir -p $O
+	minimap2 -ax map-ont --secondary=no ${GENOME_FA} input/basic.reads.4.fa | samtools view -hb - | samtools sort - > ${B1_GENOME_ALIGNED_BAM}
+	samtools index ${B1_GENOME_ALIGNED_BAM}
+
+${B1_LONGSHOT}: ${GENOME_FA} ${TEST_QUANTIFY_B1_BAM} ${B1_GENOME_ALIGNED_BAM}
+	@mkdir -p $O
+	longshot --force_overwrite --bam ${B1_GENOME_ALIGNED_BAM} --ref ${GENOME_FA} --out ${B1_LONGSHOT} --min_cov 3 --min_alt_count 3 --strand_bias_pvalue_cutoff 0.000001
+
+${ALIGN_LONGSHOT}: ${GENOME_FA} ${TEST_ALIGN_BAM}
+	@mkdir -p $O
+	longshot --force_overwrite --bam ${TEST_ALIGN_BAM} --ref ${GENOME_FA} --out ${ALIGN_LONGSHOT} --min_cov 3 --min_alt_count 3 --strand_bias_pvalue_cutoff 0.000001
+
+
+variants-tests:  test-variants test-alleles test-isoalleles test-variants-help
 
 # longshot is not currently include in the docker container
 have_longshot := $(shell which longshot >/dev/null 2>&1 && echo yes || echo no)
 
+# ifeq (${have_longshot},yes)
+# test-variants: mkdirs ${GENOME_FA} ${TEST_QUANTIFY_B1_BAM} ${BASIC_ISOFORMS_OUT_FAI} ${B1_GENOME_ALIGNED_BAM} ${B1_LONGSHOT}
+# 	flair variants -m $I/test-variants.varmanifest.tsv -i $(BASIC_ISOFORMS_OUT_FA) -b $(BASIC_ISOFORMS_BED) -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@
+# 	$(call cmp_expect,$@.isoswithvars.counts.tsv)
+# 	$(call cmp_expect,$@.aaseq.counts.tsv)
+
+test-alleles: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
+	flair alleles --bam ${TEST_ALIGN_BAM} --vcf ${ALIGN_LONGSHOT} -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@ --generate_map --annotate_bams
+	$(call cmp_expect,$@.allelegroups.counts.tsv)
+
+test-isoalleles: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
+	flair isoalleles --bam ${TEST_ALIGN_BAM} --vcf ${ALIGN_LONGSHOT} -g ${GENOME_FA}  --isoform_bed $E/test-transcriptome.isoforms.bed --read_map $E/test-transcriptome.isoform.read.map.txt -o $O/$@ --generate_map --annotate_bams
+	$(call cmp_expect,$@.isoforms.allelegroups.bed)
+
 ifeq (${have_longshot},yes)
-test-variants: mkdirs ${GENOME_FA} ${TEST_QUANTIFY_B1_BAM} ${BASIC_ISOFORMS_OUT_FAI}
-	minimap2 -ax map-ont --secondary=no ${GENOME_FA} input/basic.reads.4.fa | samtools view -hb - | samtools sort - > $O/$@.genomealigned.bam
-	samtools index $O/$@.genomealigned.bam
-	longshot --force_overwrite --bam $O/$@.genomealigned.bam --ref ${GENOME_FA} --out $O/$@.genomealigned.longshot.vcf --min_cov 3 --min_alt_count 3 --strand_bias_pvalue_cutoff 0.000001
-	echo 's1    ${TEST_QUANTIFY_B1_BAM}   $O/$@.genomealigned.longshot.vcf' > $O/$@.varmanifest.tsv
-	flair variants -m $O/$@.varmanifest.tsv -i $(BASIC_ISOFORMS_OUT_FA) -b $(BASIC_ISOFORMS_BED) -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@
+test-variants: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
+# 	flair variants -m $I/test-variants.varmanifest.tsv -i $E/test-transcriptome.isoforms.fa -b $E/test-transcriptome.isoforms.bed -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@
+	flair variants -m $I/test-variants.varmanifest.tsv -i $(BASIC_ISOFORMS_OUT_FA) -b $(BASIC_ISOFORMS_BED) -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@ --keep_intermediate
 	$(call cmp_expect,$@.isoswithvars.counts.tsv)
 	$(call cmp_expect,$@.aaseq.counts.tsv)
 else

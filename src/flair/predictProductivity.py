@@ -26,6 +26,7 @@ from flair.pycbio.sys import fileOps
 # from flair.isoform_data import BED_FIELDS, make_big_bed
 from flair.bed_to_gtf import bed_to_gtf
 from flair.flair_bed import FlairBed
+from flair.isoform_data import get_reverse_complement
 
 STOP_CODON_SEQS = set(['TAA', 'TGA', 'TAG'])
 MAX_DIST_FROM_EXON_EDGE_FOR_PTC = 55
@@ -118,7 +119,7 @@ def identify_prod_from_start(orfs, annot_start, rel_start, my_exons, exon_sizes,
     stop_reached, stop_codon_pos = calc_stop_codon_pos(seq_from_start)
     if not stop_reached:
         transcript_end = my_exons[-1].end if strand == "+" else my_exons[0].start
-        orfs.append(["NST", annot_start, transcript_end, len(five_UTR) + stop_codon_pos - rel_start, rel_start])
+        orfs.append(["NST", annot_start, transcript_end, len(five_UTR) + stop_codon_pos - rel_start, rel_start, None])
     else:
         orf_end_pos = len(five_UTR) + stop_codon_pos + 3
         # order exon sizes from 5' to 3'
@@ -127,7 +128,8 @@ def identify_prod_from_start(orfs, annot_start, rel_start, my_exons, exon_sizes,
             my_exons = my_exons[::-1]
         ptc = calc_ptc(exon_sizes, orf_end_pos, ref_transcript_id, transcript_to_nmd_except)
         genomic_end_pos = calc_genomic_end_pos(my_exons, exon_sizes, orf_end_pos, strand)
-        orfs.append([ptc, annot_start, genomic_end_pos, orf_end_pos - rel_start, rel_start])
+        aaseq = None if ptc == 'PTC' else translate(seq_from_start[:orf_end_pos - rel_start])
+        orfs.append([ptc, annot_start, genomic_end_pos, orf_end_pos - rel_start, rel_start, aaseq])
 
 def identify_best_orf_from_starts(transcript, my_annot_starts, my_seq, transcript_to_nmd_except):
     my_exons = sorted(transcript.exons)  # sorted from left to right on genome
@@ -140,13 +142,31 @@ def identify_best_orf_from_starts(transcript, my_annot_starts, my_seq, transcrip
             identify_prod_from_start(orfs, annot_start, rel_start, my_exons, exon_sizes, my_seq, transcript.strand,
                                      transcript.ref_transcript_id, transcript_to_nmd_except)
     if len(orfs) == 0:
-        orfs.append(["NGO", sorted(my_exons)[0].start, sorted(my_exons)[0].start, 0, 0])
+        orfs.append(["NGO", sorted(my_exons)[0].start, sorted(my_exons)[0].start, 0, 0, None])
     orfs.sort(key=lambda x: x[3], reverse=True)
     return orfs[0]
+
+def translate_from_bed(bed_transcript, genome):
+    if bed_transcript.productivity == 'PRO':
+        seq_to_translate = ''
+        my_exons = sorted(bed_transcript.blocks)  # sorted from left to right on genome
+        for e in my_exons:
+            if e.start <= bed_transcript.thickStart <= e.end:
+                seq_to_translate += genome.fetch(bed_transcript.chrom, bed_transcript.thickStart, e.end)
+            elif bed_transcript.thickStart < e.start and e.end < bed_transcript.thickEnd:
+                seq_to_translate += genome.fetch(bed_transcript.chrom, e.start, e.end)
+            elif e.start <= bed_transcript.thickEnd <= e.end:
+                seq_to_translate += genome.fetch(bed_transcript.chrom, e.start, bed_transcript.thickEnd)
+        if bed_transcript.strand == '-':
+            seq_to_translate = get_reverse_complement(seq_to_translate)
+        # print(seq_to_translate[-10:], translate(seq_to_translate)[-10:])
+        return translate(seq_to_translate)
+    return None
 
 def predict_prod_temp(transcript, start_codon_count, gene_to_cds_starts, transcript_to_nmd_except, genome):
     my_prod = None
     thickStart, thickEnd = None, None
+    my_aaseq = None
     if start_codon_count > 0:  # annotations exist and contain start codons
         my_annot_starts = get_annot_start_codons(transcript, gene_to_cds_starts)
         my_orf = identify_best_orf_from_starts(transcript, my_annot_starts, transcript.get_sequence(genome), transcript_to_nmd_except)
@@ -155,7 +175,8 @@ def predict_prod_temp(transcript, start_codon_count, gene_to_cds_starts, transcr
         else:
             thickStart, thickEnd = my_orf[2], my_orf[1]
         my_prod = my_orf[0]
-    return thickStart, thickEnd, my_prod
+        my_aaseq = my_orf[5]
+    return thickStart, thickEnd, my_prod, my_aaseq
 
 ##########
 # END NEW CODE FOR TRANSCRIPTOME
@@ -484,7 +505,7 @@ def translate(seq):
         for i in range(0, len(seq), 3):
             codon = seq[i:i + 3]
             protein += table[codon]
-    return protein
+    return protein[:-1]  # cutting out stop codon
 
 
 def predict_productivity(gtf, genome, bed, output, is_flair_bed):  # noqa: C901 - FIXME: reduce complexity

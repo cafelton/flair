@@ -1161,10 +1161,10 @@ def write_final_isoform_output(partition, args, final_transcript_objs, iso_to_co
             # spliced isos checked against spliced total, single exon checked against full-length total
             passes_support, my_frac_support = _iso_passes_support_filter(args, tname, final_transcript_objs[tname].gene_id, len(final_transcript_objs[tname].exons), iso_to_counts, gene_to_tot)
             if passes_support:
-                thickStart, thickEnd, productivity = predict_prod_temp(final_transcript_objs[tname], annots.start_codon_count,
-                                                                       annots.gene_to_cds_starts, annots.transcript_to_nmd_except, genome)
+                thickStart, thickEnd, productivity, aaseq = predict_prod_temp(final_transcript_objs[tname], annots.start_codon_count,
+                                                                              annots.gene_to_cds_starts, annots.transcript_to_nmd_except, genome)
                 convert_to_flair_bed(final_transcript_objs[tname], thickStart=thickStart, thickEnd=thickEnd, read_support=iso_to_counts[tname][0],
-                                     frac_support=my_frac_support, productivity=productivity, samples=(args.sample_name,)).write(iso_fh)
+                                     frac_support=my_frac_support, productivity=productivity, samples=(args.sample_name,), aaseq_id=aaseq).write(iso_fh)
                 seq_fh.write('>' + final_transcript_objs[tname].name + '\n')
                 seq_fh.write(final_transcript_objs[tname].get_sequence(genome) + '\n')
 
@@ -1267,8 +1267,8 @@ def combine_chunks(args, output, partitions):
     combine_temp_files_by_suffix(output, [p.file_prefix for p in partitions], files_to_combine)
 
 def get_new_ids(output):
-    iso_hash_to_ID, gene_hash_to_ID = {}, {}
-    iso_count, gene_count = 1, 1
+    iso_hash_to_ID, gene_hash_to_ID, aaseq_to_id = {}, {}, {}
+    iso_count, gene_count, aaseq_count = 1, 1, 1
     with open(output + '.isoforms.newids.bed', 'w') as fh:
         for bed_rec in BedReader(output + '.isoforms.bed', bedClass=FlairBed):
             if bed_rec.name not in iso_hash_to_ID:
@@ -1279,9 +1279,19 @@ def get_new_ids(output):
                 gene_id = f'FLG{gene_count:08d}'
                 gene_hash_to_ID[bed_rec.gene_id] = gene_id
                 gene_count += 1
+            if bed_rec.aaseq_id is not None and bed_rec.aaseq_id not in aaseq_to_id:
+                aaseq_id = f'FLP{aaseq_count:08d}'
+                aaseq_to_id[bed_rec.aaseq_id] = aaseq_id
+                aaseq_count += 1
             bed_rec.name = iso_hash_to_ID[bed_rec.name]
             bed_rec.gene_id = gene_hash_to_ID[bed_rec.gene_id]
+            if bed_rec.aaseq_id is not None:
+                bed_rec.aaseq_id = aaseq_to_id[bed_rec.aaseq_id]
             bed_rec.write(fh)
+    with open(output + '.aaseq.tsv', 'w') as fh:
+        fh.write('aaseq_id\taaseq\n')
+        for aaseq, id in aaseq_to_id.items():
+            fh.write(f'{id}\t{aaseq}\n')
     return iso_hash_to_ID
 
 def fix_ids_txt_file(iso_hash_to_ID, oldfile, newfile):
