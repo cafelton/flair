@@ -291,8 +291,8 @@ class ReadRec:
         left_polyA, right_polyA = 0, 0
         read_seq = read.query_sequence
         if read.cigartuples[0][0] == pysam.CIGAR_OPS.CSOFT_CLIP:
-            left_rev = read_seq[:read.cigartuples[0][1]][::-1]
-            left_polyA = _check_polyA(left_rev)
+            left_rev_comp = get_reverse_complement(read_seq[:read.cigartuples[0][1]])
+            left_polyA = _check_polyA(left_rev_comp)
         if read.cigartuples[-1][0] == pysam.CIGAR_OPS.CSOFT_CLIP:
             right_seq = read_seq[-1 * read.cigartuples[-1][1]:]
             right_polyA = _check_polyA(right_seq)
