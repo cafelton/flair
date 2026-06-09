@@ -50,3 +50,25 @@ visibility hide
 html ../empty.html
 priority 50
 
+################################################################################################
+track test_transcriptome_seg1
+group transcriptome_tests
+type bigBed
+shortLabel test transcriptome seg1
+longLabel test transcriptome seg1
+bigDataUrl ../../output/test-transcriptome-seg1.isoforms.bb
+color 50,50,128
+visibility hide
+html ../empty.html
+priority 10
+
+track seg1_bam
+group transcriptome_tests
+type bam
+shortLabel single exon test BAM
+longLabel single exon test BAM
+bigDataUrl ../../output/test-align-seg1.bam
+visibility hide
+html ../empty.html
+priority 100
+

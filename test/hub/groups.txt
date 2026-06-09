@@ -2,3 +2,7 @@ name sim_slice_site
 label Simulated splice-site mutation
 priority 100
 
+name transcriptome_tests
+label Transcriptome tests
+priority 101
+
