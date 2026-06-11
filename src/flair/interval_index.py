@@ -1,13 +1,9 @@
 """
-Lightweight per-chrom interval index backed by ruranges.
+Lightweight per-chrom interval index with simple searching.
 
 Supports the build-once/query-many pattern used in flair.  Intervals are
 half-open ``[start, end)``; queries return the attached payload objects.
 """
-import numpy as np
-from ruranges import numpy as _rn
-
-_COORD_DTYPE = np.int64
 
 
 class IntervalIndex:
@@ -31,27 +27,16 @@ class IntervalIndex:
         self._data.append(data)
         self._dirty = True
 
-    def _freeze(self):
-        if not self._dirty and self._arr_starts is not None:
-            return
-        self._arr_starts = np.asarray(self._starts, dtype=_COORD_DTYPE)
-        self._arr_ends = np.asarray(self._ends, dtype=_COORD_DTYPE)
-        self._dirty = False
-
     def overlap(self, start, end, slack=0):
         """Return list of payloads whose interval overlaps ``[start, end)``.
         ``slack`` extends both sides of the query range."""
         if not self._data:
             return []
-        self._freeze()
-        qs = np.array([start], dtype=_COORD_DTYPE)
-        qe = np.array([end], dtype=_COORD_DTYPE)
-        idx1, _ = _rn.overlaps(
-            starts=self._arr_starts, ends=self._arr_ends,
-            starts2=qs, ends2=qe,
-            slack=slack, sort_output=False)
-        data = self._data
-        return [data[i] for i in idx1]
+        overlaps = []
+        for i in range(len(self._data)):
+            if max(self._starts[i], start) < min(self._ends[i], end) + slack:
+                overlaps.append(self._data[i])
+        return overlaps
 
     def items(self):
         "yield (start, end, data) for every interval"

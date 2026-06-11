@@ -107,9 +107,8 @@ def _collect_closest_hits(start, end, intron_hits):
 def _correct_junction(corrector, readrec, start, end, new_junctions):
     """Add a corrected intron junction. Return intron record used or
     None if not supported."""
-
     intron_hits = corrector.overlap_introns(readrec.chrom, start, end)
-    if intron_hits is None:
+    if intron_hits is None or len(intron_hits) == 0:
         logging.debug(f"Read: '{readrec.name}': no intron support for {readrec.chrom}:{start}-{end}")
         return None
     intron_hits = _filter_too_close(readrec, new_junctions, intron_hits)

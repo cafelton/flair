@@ -28,7 +28,8 @@ def parse_args():
                         help="name of module to run")
     parser.add_argument('module_args', nargs=argparse.REMAINDER,
                         help="arguments to module")
-    return cli.parseOptsArgsWithLogging(parser)
+    # allow changing the default logging level here
+    return cli.splitOptionsArgs(parser, cli.parseArgsWithLogging(parser, defaultLevel=logging.WARNING))
 
 def flair_module_run(opts, module, module_argv):  # noqa: C901
     start_time = time.time()

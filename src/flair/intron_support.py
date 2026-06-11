@@ -2,14 +2,15 @@
 Annotation and orthogonal intron support.
 """
 import sys
-from collections import defaultdict
 from flair import MIN_INTRON_SIZE, MAX_INTRON_SIZE, FlairInputDataError
 from flair.gtf_io import GtfData
-from flair.interval_index import IntervalIndex
 from flair.pycbio.hgdata.bed import BedReader
 from flair.pycbio.tsv import TsvReader
+from collections import namedtuple
 
 _VALID_STRANDS = {'+', '-', '.'}
+
+IntronIndex = namedtuple('IntronIndex', ['start', 'end', 'strand'])
 
 class SupportIntron:
     """Coordinates and support.  Strand could None if not available, but currently
@@ -35,37 +36,26 @@ class IntronSupport:
     """
     def __init__(self, *, min_intron_size=MIN_INTRON_SIZE, max_intron_size=MAX_INTRON_SIZE):
         # dict index by chrom of per-chrom interval indexes, keyed on first base of donor and last base of the acceptor sites
-        self.coords_maps = defaultdict(IntervalIndex)
+        self.coords_maps = {}
         self.min_intron_size = min_intron_size
         self.max_intron_size = max_intron_size
         self.chroms = set()
 
-    def _find_point_strand(self, chrom, point, strand):
-        for intron in self.coords_maps[chrom].overlap(point, point + 1):
-            if intron.strand == strand:
-                return intron
-        return None
-
-    def _find_intron(self, chrom, start, end, strand):
-        donor = self._find_point_strand(chrom, start, strand)
-        if donor is not None:
-            accept = self._find_point_strand(chrom, end - 1, strand)
-            if accept is donor:
-                return donor  # same intron
-        return None
-
     def _add_intron(self, chrom, start, end, strand):
         assert start < end
-        intron = SupportIntron(chrom, start, end, strand)
-        self.coords_maps[chrom].add(start, start + 1, intron)
-        self.coords_maps[chrom].add(end - 1, end, intron)
-        self.chroms.add(chrom)
+        if chrom not in self.coords_maps:
+            self.coords_maps[chrom] = {}
+            self.chroms.add(chrom)
+        intron_index = IntronIndex(start, end, strand)
+        if intron_index not in self.coords_maps[chrom]:
+            intron = SupportIntron(chrom, start, end, strand)
+            self.coords_maps[chrom][intron_index] = intron
+        else:
+            intron = self.coords_maps[chrom][intron_index]
         return intron
 
     def _add_support(self, chrom, start, end, strand, read_count):
-        intron = self._find_intron(chrom, start, end, strand)
-        if intron is None:
-            intron = self._add_intron(chrom, start, end, strand)
+        intron = self._add_intron(chrom, start, end, strand)
         if read_count is None:
             intron.annot_supported = True
         else:
@@ -80,33 +70,23 @@ class IntronSupport:
             return True
         return False
 
-    def overlap(self, chrom, start, end, flank_window=0):
-        """Get list of overlapping introns where either ends overlaps this range with
-        a +/-bp window"""
-        return self.coords_maps[chrom].overlap(start, end, slack=flank_window)
-
     def overlap_introns(self, chrom, start, end, flank_window=0):
         """get introns were splice junctions overlap each end of this range,
         with a +/-bp window on either of ends of the range. Empty list if no hits"""
         # only return introns that hit both ends
-
-        starts = self.overlap(chrom, start, start + 1, flank_window)
-        ends = self.overlap(chrom, end - 1, end, flank_window)
-
-        ends_ids = set([id(e) for e in ends])
-        return [intron for intron in starts
-                if id(intron) in ends_ids]
-
-    def chroms(self):
-        "generator for chroms"
-        return self.coords_maps.keys()
+        overlaps = []
+        if chrom in self.coords_maps:
+            for interval in self.coords_maps[chrom]:
+                if abs(interval.start - start) <= flank_window and abs(interval.end - end) <= flank_window:
+                    overlaps.append(self.coords_maps[chrom][interval])
+        return overlaps
 
     def entries(self, chrom=None):
         "generator for (chrom, start, end, intron), optionally on a chrom (introns have two entries)"
         chroms = [chrom] if chrom is not None else self.chroms()
         for chrom in chroms:
-            for start, end, intron in self.coords_maps[chrom].items():
-                yield chrom, start, end, intron
+            for interval, intron in self.coords_maps[chrom].items():
+                yield chrom, interval.start, interval.end, intron
 
     def introns(self, chrom=None):
         "generator for introns, optionally on a chrom"
