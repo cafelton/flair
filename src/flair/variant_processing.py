@@ -78,15 +78,15 @@ def parse_cigar_for_introns_indels(cigar, alignstart):
 
 def add_indels_to_vars(insertions, deletions, chrom, readseq, genome, my_vars):
     for refpos, querpos, length in insertions:
-        if refpos in my_vars:
+        if refpos - 1 in my_vars:
             vinfo = (readseq[querpos - 1], readseq[querpos - 1:querpos + length])
-            if vinfo in my_vars:
-                my_vars[refpos][vinfo][1] = 1
+            if vinfo in my_vars[refpos - 1]:
+                my_vars[refpos - 1][vinfo][1] = 1
     for refpos, querpos, length in deletions:
-        if refpos in my_vars:
-            vinfo = (refpos, genome.fetch(chrom, refpos - 1, refpos + length).upper(), genome.fetch(chrom, refpos - 1, refpos + length).upper())
-            if vinfo in my_vars:
-                my_vars[refpos][vinfo][1] = 1
+        if refpos - 1 in my_vars:
+            vinfo = (genome.fetch(chrom, refpos - 1, refpos + length).upper(), genome.fetch(chrom, refpos - 1, refpos).upper())
+            if vinfo in my_vars[refpos - 1]:
+                my_vars[refpos - 1][vinfo][1] = 1
 
 def get_coverage_snvs_from_read(a, my_vars):
     alignedbases = a.get_aligned_pairs(with_seq=True, matches_only=True)
@@ -277,7 +277,7 @@ def write_vcf_file(output, new_header, variant_to_allele_group_counts_info, norm
                 these_calls = [vcfpy.Call('tumor', {'GT': '0/1', 'DP': var_data['t_cov'], 'AD': [var_data['t_cov'] - var_data['t_var'], var_data['t_var']]})]
                 if norm_bam is not None:
                     these_calls.append(vcfpy.Call('normal', {'GT': '0/1', 'DP': var_data['n_cov'], 'AD': [var_data['n_cov'] - var_data['n_var'], var_data['n_var']]}))
-                new_record = vcfpy.Record(chrom, int(pos), [], ref, [alt_desc], 100, ['PASS'], OrderedDict([('AG', var_data['ag'])]), format_strings, these_calls)
+                new_record = vcfpy.Record(chrom, int(pos) + 1, [], ref, [alt_desc], 100, ['PASS'], OrderedDict([('AG', var_data['ag'])]), format_strings, these_calls)
                 writer.write_record(new_record)
                 for allele_group in var_data['ag']:
                     # if allele_group not in allele_group_to_final_vars:
@@ -344,7 +344,8 @@ def get_variant_final_coverage(readvarinfo_to_reads, var_info, gene_chrom, varia
         for varindex, is_var in og_group:
             pos, ref, alt = var_info[varindex].split(';')
             var_data = (gene_chrom, pos, ref, alt)
-            for file_label, read in readvarinfo_to_reads[og_group]:
-                variant_to_allele_group_counts_info[var_data][file_label + '_cov'] += 1
-                if is_var == 1:
-                    variant_to_allele_group_counts_info[var_data][file_label + '_var'] += 1
+            if var_data in variant_to_allele_group_counts_info:
+                for file_label, read in readvarinfo_to_reads[og_group]:
+                    variant_to_allele_group_counts_info[var_data][file_label + '_cov'] += 1
+                    if is_var == 1:
+                        variant_to_allele_group_counts_info[var_data][file_label + '_var'] += 1
