@@ -1048,7 +1048,7 @@ def get_juncs_single_sample(args, region, temp_prefix, sample, bamfile_name, reg
     temp_prefix = temp_prefix + '_' + sample
 
     bam_file = pysam.AlignmentFile(bamfile_name, 'rb')
-    num_reads, clipping_file = generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region)
+    num_reads, clipping_file = generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region.name, region.start, region.end)
     bam_file.close()
 
     # FIXME: what format is this? reading into memory, why write file?

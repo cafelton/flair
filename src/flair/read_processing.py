@@ -51,12 +51,12 @@ def add_corrected_read_to_groups(corrected_read, sj_to_ends):
     sj_to_ends[junc_key].reads.append(corrected_read)
 
 
-def generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region):
+def generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, chrom, start, end):
     c = 0
     # use both soft and hard-clipping because some alignments (secondary, maybe supplementary) can be hard-clipped
     clipping_types = (pysam.CIGAR_OPS.CSOFT_CLIP, pysam.CIGAR_OPS.CHARD_CLIP)
     with open(temp_prefix + '.reads.genomicclipping.txt', 'w') as clipping_fh:
-        for read in bam_file.fetch(region.name, region.start, region.end):
+        for read in bam_file.fetch(chrom, start, end):
             if not read.is_secondary and not read.is_supplementary:
                 c += 1
                 name = read.query_name

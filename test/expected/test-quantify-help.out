@@ -1,14 +1,14 @@
-usage: quantify [-h] -r R -i I [-o O] [-t T] [--temp_dir TEMP_DIR]
-                [--sample_id_only] [--tpm] [--quality QUALITY] [--trust_ends]
-                [--generate_map] [--isoform_bed ISOFORMS] [--output_bam]
+usage: quantify [-h] --manifest MANIFEST --isoform_fa ISOFORM_FA [-o OUTPUT]
+                [-t THREADS] [--sample_id_only] [--tpm] [--quality QUALITY]
+                [--trust_ends] [--generate_map] --isoform_bed ISOFORM_BED
 
 options:
   -h, --help            show this help message and exit
-  -o O, --output O      output file name base for FLAIR quantify (default:
+  -o OUTPUT, --output OUTPUT
+                        output file name base for FLAIR quantify (default:
                         flair.quantify)
-  -t T, --threads T     minimap2 number of threads (4)
-  --temp_dir TEMP_DIR   directory to put temporary files. use './" to indicate
-                        current directory (default: python tempfile directory)
+  -t THREADS, --threads THREADS
+                        minimap2 number of threads (4)
   --sample_id_only      only use sample id in output header
   --tpm                 Convert counts matrix to transcripts per million and
                         output as a separate file named <output>.tpm.tsv
@@ -17,14 +17,11 @@ options:
                         with minimal fragmentation
   --generate_map        create read-to-isoform assignment files for each
                         sample (default: not specified)
-  --output_bam          whether to output bam file of reads aligned to correct
-                        isoforms
 
 required named arguments:
-  -r R, --reads_manifest R
-                        Tab delimited file containing sample id, condition,
+  --manifest MANIFEST   Tab delimited file containing sample id, condition,
                         batch, reads.fq
-  -i I, --isoforms I    FastA of FLAIR collapsed isoforms
-  --isoform_bed ISOFORMS, --isoformbed ISOFORMS
-                        isoform .bed file, must be specified if --stringent or
-                        check_splice is specified
+  --isoform_fa ISOFORM_FA
+                        FastA of FLAIR collapsed isoforms
+  --isoform_bed ISOFORM_BED
+                        isoform .bed file

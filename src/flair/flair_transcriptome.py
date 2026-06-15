@@ -1191,7 +1191,7 @@ def _run_region(*, partition, gtf_data, junction_corrector, args):
     # which can be considered to support isoform.
 
     # logging.info('generating genomic clipping reference')
-    num_reads, clipping_file = generate_genomic_alignment_read_to_clipping_file(partition.file_prefix, bam_file, region)
+    num_reads, clipping_file = generate_genomic_alignment_read_to_clipping_file(partition.file_prefix, bam_file, region.name, region.start, region.end)
 
     if num_reads == 0:
         generate_full_set_empty_intermediate_files(partition.file_prefix, args.generate_map)

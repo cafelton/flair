@@ -174,6 +174,10 @@ BASIC_ISOFORMS_BED = $E/test-collapse-annot.isoforms.bed
 BASIC_ISOFORMS_OUT_FA = $O/test-collapse-annot.isoforms.fa
 BASIC_ISOFORMS_OUT_FAI = $O/test-collapse-annot.isoforms.fa.fai
 
+TOME_OUT_FA = $O/test-transcriptome.isoforms.fa
+TOME_OUT_FAI = $O/test-transcriptome.isoforms.fa.fai
+
+QUANTIFY_INPUT_BAMS = $O/test-quantify.input.success_message.txt
 
 ##
 # Files generate by tests that are used by other tests.
@@ -340,27 +344,11 @@ test-combine-multends-10pct: mkdirs
 ###
 # FLAIR QUANTIFY
 ###
-quantify-tests: test-quantify test-quantify-nobam test-quantify-help
+quantify-tests: test-quantify test-quantify-help
 
-test-quantify: mkdirs ${BASIC_ISOFORMS_OUT_FAI}
-	rm -rf $O/$@.tmp
-	flair quantify -r $(BASIC_READS_MANIFEST) -i $(BASIC_ISOFORMS_OUT_FA) --isoform_bed $(BASIC_ISOFORMS_BED) --generate_map --temp_dir $O/$@.tmp --tpm --sample_id_only -o $O/$@ --output_bam
-	samtools view $O/$@.A1.A.flair.aligned.bam | cut -f 1,3 > $O/$@.A1.A.flair.aligned.readtotranscript.txt
-	$(call cmp_expect,$@.counts.tsv)
-	$(call cmp_expect_sort,$@.A1.A.flair.aligned.readtotranscript.txt)
-	$(call cmp_expect,$@.tpm.tsv)
-
-test-quantify-newtranscripts: mkdirs ${BASIC_ISOFORMS_OUT_FAI}
-	rm -rf $O/$@.tmp
-	flair quantify -r $(BASIC_READS_MANIFEST) -i $E/test-transcriptome.isoforms.fa --isoform_bed $E/test-transcriptome.isoforms.bed --generate_map --temp_dir $O/$@.tmp --tpm --sample_id_only -o $O/$@ --output_bam
-	$(call cmp_expect,$@.counts.tsv)
-
-${TEST_QUANTIFY_B1_BAM}: test-quantify
-
-# without map or bam outputs
-test-quantify-nobam : mkdirs ${BASIC_ISOFORMS_OUT_FAI}
-	rm -rf $O/$@.tmp
-	flair quantify -r $(BASIC_READS_MANIFEST) -i $(BASIC_ISOFORMS_OUT_FA) --isoform_bed $(BASIC_ISOFORMS_BED) --temp_dir $O/$@.tmp --tpm --sample_id_only -o $O/$@
+test-quantify: mkdirs ${TOME_OUT_FAI} ${QUANTIFY_INPUT_BAMS}
+	rm -rf $O/$@.intermediate
+	flair quantify --manifest $I/basic.reads_manifest_bam.txt --isoform_fa $E/test-transcriptome.isoforms.fa --isoform_bed $E/test-transcriptome.isoforms.bed --generate_map --tpm --sample_id_only -o $O/$@
 	$(call cmp_expect,$@.counts.tsv)
 	$(call cmp_expect,$@.tpm.tsv)
 
@@ -750,6 +738,20 @@ ${BASIC_ISOFORMS_OUT_FA}: ${BASIC_ISOFORMS_FA}
 
 ${BASIC_ISOFORMS_OUT_FAI}: ${BASIC_ISOFORMS_OUT_FA}
 	samtools faidx --output $@ $<
+
+${TOME_OUT_FA}:
+	cp $E/test-transcriptome.isoforms.bed $@
+
+${TOME_OUT_FAI}: ${TOME_OUT_FA}
+	samtools faidx --output $@ $<
+
+${QUANTIFY_INPUT_BAMS}: ${GENOME_FA}
+	for name in "basic.reads.1" "basic.reads.2" "basic.reads.3" "basic.reads.4" "basic.reads.5" "basic.reads.6" ; \
+	do \
+	minimap2 -ax splice --secondary=no ${GENOME_FA} $I/$$name.fa | samtools view -hb - | samtools sort - > $O/$$name.genomealigned.bam; \
+	samtools index $O/$$name.genomealigned.bam; \
+	done
+	echo "done aligning input bams" > $@
 
 ##
 # test hub (work in progress)
