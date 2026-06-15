@@ -1,6 +1,7 @@
-usage: quantify [-h] --manifest MANIFEST --isoform_fa ISOFORM_FA [-o OUTPUT]
+usage: quantify [-h] --manifest MANIFEST --genome GENOME [-o OUTPUT]
                 [-t THREADS] [--sample_id_only] [--tpm] [--quality QUALITY]
                 [--trust_ends] [--generate_map] --isoform_bed ISOFORM_BED
+                [--with_gene] [--norm_ends]
 
 options:
   -h, --help            show this help message and exit
@@ -17,11 +18,14 @@ options:
                         with minimal fragmentation
   --generate_map        create read-to-isoform assignment files for each
                         sample (default: not specified)
+  --with_gene           output lines with have isoform_gene
+  --norm_ends           normalize transcript ends (recommended if not using
+                        trust_ends and don't care about different transcript
+                        ends)
 
 required named arguments:
   --manifest MANIFEST   Tab delimited file containing sample id, condition,
                         batch, reads.fq
-  --isoform_fa ISOFORM_FA
-                        FastA of FLAIR collapsed isoforms
+  --genome GENOME       FastA of genome
   --isoform_bed ISOFORM_BED
                         isoform .bed file
