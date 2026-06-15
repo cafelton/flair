@@ -346,11 +346,18 @@ test-combine-multends-10pct: mkdirs
 ###
 quantify-tests: test-quantify test-quantify-help
 
-test-quantify: mkdirs ${TOME_OUT_FAI} ${QUANTIFY_INPUT_BAMS}
+test-quantify: mkdirs ${TOME_OUT_FAI} ${QUANTIFY_INPUT_BAMS} ${GENOME_FA}
 	rm -rf $O/$@.intermediate
-	flair quantify --manifest $I/basic.reads_manifest_bam.txt --isoform_fa $E/test-transcriptome.isoforms.fa --isoform_bed $E/test-transcriptome.isoforms.bed --generate_map --tpm --sample_id_only -o $O/$@
+# 	flair quantify --manifest $I/basic.reads_manifest_bam.txt --isoform_fa $E/test-transcriptome.isoforms.fa --isoform_bed $E/test-transcriptome.isoforms.bed --generate_map --tpm --sample_id_only -o $O/$@ --with_gene
+	flair quantify --manifest $I/basic.reads_manifest_bam.txt --genome ${GENOME_FA} --isoform_bed $E/test-transcriptome.isoforms.bed --generate_map --tpm --sample_id_only -o $O/$@ --with_gene
 	$(call cmp_expect,$@.counts.tsv)
 	$(call cmp_expect,$@.tpm.tsv)
+
+test-quantify-normends: mkdirs ${TOME_OUT_FAI} ${QUANTIFY_INPUT_BAMS} ${GENOME_FA}
+	rm -rf $O/$@.intermediate
+	flair quantify --manifest $I/basic.reads_manifest_bam.txt --genome ${GENOME_FA} --isoform_bed $E/test-transcriptome.isoforms.bed --generate_map --tpm --sample_id_only -o $O/$@ --with_gene --norm_ends
+# 	$(call cmp_expect,$@.counts.tsv)
+# 	$(call cmp_expect,$@.tpm.tsv)
 
 test-quantify-help: mkdirs
 	flair quantify --help > $O/$@.out

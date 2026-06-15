@@ -8,12 +8,13 @@ import pysam
 from shutil import rmtree
 import logging
 from flair.io_utils import make_temp_dir
-from flair.pycbio.hgdata.bed import BedReader
+from flair.pycbio.hgdata.bed import BedReader, BedBlock
 from flair.flair_bed import FlairBed
 from flair.flair_transcriptome import _check_junction_subset
 from flair.read_processing import generate_genomic_alignment_read_to_clipping_file
 from flair.count_sam_transcripts import run_count_sam_transcripts
 from flair.counts_to_tpm import counts_to_tpm
+from flair.isoform_data import get_reverse_complement
 import multiprocessing as mp
 
 
@@ -24,8 +25,8 @@ def parse_args():
     required = parser.add_argument_group('required named arguments')
     required.add_argument('--manifest', action='store', type=str,
                           required=True, help='Tab delimited file containing sample id, condition, batch, reads.fq')
-    required.add_argument('--isoform_fa', action='store',
-                          type=str, required=True, help='FastA of FLAIR collapsed isoforms')
+    required.add_argument('--genome', action='store',
+                          type=str, required=True, help='FastA of genome')
     parser.add_argument('-o', '--output', type=str, action='store', default='flair.quantify',
                         help='''output file name base for FLAIR quantify (default: flair.quantify)''')
     parser.add_argument('-t', '--threads', type=int,
@@ -42,6 +43,10 @@ def parse_args():
                         help='''create read-to-isoform assignment files for each sample (default: not specified)''')
     required.add_argument('--isoform_bed', required=True, type=str, action='store',
                           help='''isoform .bed file''')
+    parser.add_argument('--with_gene', action='store_true',
+                        help='''output lines with have isoform_gene''')
+    parser.add_argument('--norm_ends', default=False, action='store_true',
+                        help='''normalize transcript ends (recommended if not using trust_ends and don't care about different transcript ends)''')
     # parser.add_argument('--stringent', default=False, action='store_true',
     #                     help='''Supporting reads must cover 80 percent of their isoform and extend at least 25 nt into the
     #                     first and last exons. If those exons are themselves shorter than 25 nt, the requirement becomes
@@ -63,8 +68,8 @@ def check_args(args):
         raise Exception('Isoform models bed file path does not exist: ' + args.isoform_bed)
     elif args.isoform_bed.endswith('.psl'):
         raise Exception('** Error. Flair no longer accepts PSL input. Please use psl_to_bed first.')
-    if not os.path.exists(args.isoform_fa):
-        raise Exception('Isoform sequences fasta file path does not exist: ' + args.isoform_fa)
+    if not os.path.exists(args.genome):
+        raise Exception('Genome fasta file path does not exist: ' + args.genome)
     if not os.path.exists(args.manifest):
         raise Exception('Manifest file path does not exist: ' + args.manifest)
 
@@ -78,7 +83,7 @@ def load_manifest(manifest, sample_id_only):
         sample, group, batch, readFile = cols
         if sample_id_only is False:
             if '_' in sample or '_' in group or '_' in batch:
-                raise Exception(f'Please do not use underscores in the id, condition, or batch fields of {args.r}.')
+                raise Exception(f'Please do not use underscores in the id, condition, or batch fields of {manifest}.')
 
         if not os.path.exists(readFile):
             raise Exception('Query file path does not exist: {}'.format(readFile))
@@ -94,7 +99,9 @@ class GeneData():
         self.left_bound = None
         self.right_bound = None
         self.isoform_beds = []
-        self.isoform_fas = []
+        # self.isoform_fas = []
+        self.left_ss_to_bound = {}
+        self.right_ss_to_bound = {}
 
     def add_isoform_bed(self, isoform):
         self.isoform_beds.append(isoform)
@@ -102,8 +109,15 @@ class GeneData():
             self.left_bound = isoform.chromStart
         if self.right_bound is None or isoform.chromEnd > self.right_bound:
             self.right_bound = isoform.chromEnd
+        if len(isoform.blocks) > 1:
+            left_bound, left_ss = isoform.blocks[0].start, isoform.blocks[0].end
+            if left_ss not in self.left_ss_to_bound or left_bound < self.left_ss_to_bound[left_ss]:
+                self.left_ss_to_bound[left_ss] = left_bound
+            right_ss, right_bound = isoform.blocks[-1].start, isoform.blocks[-1].end
+            if right_ss not in self.right_ss_to_bound or right_bound > self.right_ss_to_bound[right_ss]:
+                self.right_ss_to_bound[right_ss] = right_bound
 
-def load_isoform_data(isoform_bed, isoform_fa):
+def load_isoform_data(isoform_bed):
     gene_data = {}
     isoform_to_gene = {}
     for bed in BedReader(isoform_bed, bedClass=FlairBed):
@@ -111,13 +125,6 @@ def load_isoform_data(isoform_bed, isoform_fa):
             gene_data[bed.gene_id] = GeneData(bed.gene_id, bed.chrom, bed.strand)
         gene_data[bed.gene_id].add_isoform_bed(bed)
         isoform_to_gene[bed.name] = bed.gene_id
-    iso_name = None
-    for line in open(isoform_fa):
-        if line[0] == '>':
-            iso_name = line[1:].rstrip().split()[0]
-        else:
-            gene_id = isoform_to_gene[iso_name]
-            gene_data[gene_id].isoform_fas.append((iso_name, line.rstrip()))
     return gene_data
 
 def write_unique_bound(fh, isoform, unique_seq_bound):
@@ -145,9 +152,9 @@ def load_unique_bound(temp_prefix, gene_info):
                     if isoform.name != otheriso.name and len(otheriso.blocks) > 1:
                         _check_junction_subset(juncs, first_exon, last_exon, otheriso.read_support, otheriso.getGaps(), otheriso.blocks,
                                                terminal_exon_is_subset, superset_support, unique_seq_bound)
-                write_unique_bound(fh, isoform, unique_seq_bound)             
+                write_unique_bound(fh, isoform, unique_seq_bound)
 
-def write_combined_counts(sample_data, gene_data, temp_dir, output, sample_id_only):
+def write_combined_counts(sample_data, gene_data, temp_dir, output, sample_id_only, with_gene):
     with open(output + '.counts.tsv', 'w') as fh:
         if sample_id_only:
             fh.write('\t'.join(['ids'] + [x[0] for x in sample_data]) + '\n')
@@ -161,7 +168,8 @@ def write_combined_counts(sample_data, gene_data, temp_dir, output, sample_id_on
                     line = line.rstrip().split('\t')
                     iso_to_counts[line[0]][i] = int(line[1])
             for iso in iso_to_counts:
-                fh.write('\t'.join([iso + '_' + gene_id] + [str(x) for x in iso_to_counts[iso]]) + '\n')
+                iso_id = iso + '_' + gene_id if with_gene else iso
+                fh.write('\t'.join([iso_id] + [str(x) for x in iso_to_counts[iso]]) + '\n')
 
 def write_map_out(sample_data, gene_data, temp_dir, output, generate_map):
     if generate_map:
@@ -196,16 +204,27 @@ def get_counts_for_sample(sample, bamfile, temp_prefix, gene_info, generate_map,
     )
 
 def get_counts_for_gene(input):
-    temp_dir, gene_id, gene_info, sample_data, generate_map, trust_ends = input
+    temp_dir, gene_id, gene_info, sample_data, generate_map, trust_ends, genome_file, norm_ends = input
     logging.debug(f'realigning reads to {gene_id}')
     temp_prefix = temp_dir + gene_id + '/'
     os.makedirs(temp_prefix)
-    with open(temp_prefix + 'isoforms.bed', 'w') as fh:
-        for bed in gene_info.isoform_beds:
-            bed.write(fh)
-    with open(temp_prefix + 'isoforms.fa', 'w') as fh:
-        for name, seq in gene_info.isoform_fas:
-            fh.write('>' + name + '\n' + seq + '\n')
+    with pysam.FastaFile(genome_file) as genome:
+        with open(temp_prefix + 'isoforms.bed', 'w') as fh_bed, open(temp_prefix + 'isoforms.fa', 'w') as fh_fa:
+            for bed in gene_info.isoform_beds:
+                if norm_ends and len(bed.blocks) > 1:
+                    bed.chromStart = gene_info.left_ss_to_bound[bed.blocks[0].end]
+                    bed.blocks[0] = BedBlock(bed.chromStart, bed.blocks[0].end)
+                    bed.chromEnd = gene_info.right_ss_to_bound[bed.blocks[-1].start]
+                    bed.blocks[-1] = BedBlock(bed.blocks[-1].start, bed.chromEnd)
+                bed.write(fh_bed)
+                seq = []
+                for block in bed.blocks:
+                    seq.append(genome.fetch(bed.chrom, block.start, block.end))
+                seq = ''.join(seq)
+                if bed.strand == '-':
+                    seq = get_reverse_complement(seq)
+                fh_fa.write('>' + bed.name + '\n' + seq + '\n')
+
     load_unique_bound(temp_prefix, gene_info)
 
     for sample, group, batch, bamfile in sample_data:
@@ -217,13 +236,13 @@ def quantify():
     check_args(args)
     temp_dir = make_temp_dir(args.output)
     sample_data = load_manifest(args.manifest, args.sample_id_only)
-    gene_data = load_isoform_data(args.isoform_bed, args.isoform_fa)
+    gene_data = load_isoform_data(args.isoform_bed)
 
     logging.info(f'Re-aligning reads to transcriptome. Writing temporary files into {temp_dir}')
 
     packed = []
     for gene_id in gene_data:
-        packed.append((temp_dir, gene_id, gene_data[gene_id], sample_data, args.generate_map, args.trust_ends))
+        packed.append((temp_dir, gene_id, gene_data[gene_id], sample_data, args.generate_map, args.trust_ends, args.genome, args.norm_ends))
 
     if args.threads == 1:
         for p in packed:
@@ -234,7 +253,7 @@ def quantify():
             pool.map(get_counts_for_gene, packed)
 
     logging.info('writing quantify output')
-    write_combined_counts(sample_data, gene_data, temp_dir, args.output, args.sample_id_only)
+    write_combined_counts(sample_data, gene_data, temp_dir, args.output, args.sample_id_only, args.with_gene)
 
     write_map_out(sample_data, gene_data, temp_dir, args.output, args.generate_map)
 
