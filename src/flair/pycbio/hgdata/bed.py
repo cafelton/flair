@@ -148,7 +148,7 @@ class Bed:
         if self.numStdCols >= 4:
             row.append(str(self.name) if self.name is not None else f"{self.chrom}:{self.chromStart}-{self.chromEnd}")
         if self.numStdCols >= 5:
-            row.append(defaultIfNone(self.score, 0))
+            row.append('0' if self.score is None else str(min(1000, self.score)))
         if self.numStdCols >= 6:
             row.append(defaultIfNone(self.strand, '+'))
         if self.numStdCols >= 8:
