@@ -3,15 +3,11 @@
 
 import argparse
 import pysam
-# from gtf_io import load_gtf_to_gene_data
-# from flair.io_utils import make_temp_dir
-# import networkx as nx
 from copy import deepcopy
-# import graphviz
-import variant_processing as vp
+import flair.variant_processing as vp
 from flair.pycbio.hgdata.bed import BedReader
 from flair.flair_bed import FlairBed
-from predictProductivity import translate_from_bed
+from flair.predictProductivity import translate_from_bed
 from flair.isoform_data import make_big_bed, get_reverse_complement, COMPBASE
 
 

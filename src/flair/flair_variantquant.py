@@ -4,7 +4,10 @@ import argparse
 import os
 import shutil
 import math
-import flair.flair_variantmodels as fv
+import pysam
+from flair.pycbio.hgdata.bed import BedReader
+from flair.flair_bed import FlairBed
+from flair.io_utils import make_temp_dir
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
 compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N',
@@ -32,17 +35,97 @@ def parse_var_args():
                         help='specify minimum total read coverage threshold to output a site')
     parser.add_argument('-k', '--output_all', action='store_true',
                         help="specify this option if you want to output read counts for all putative RNA editing sites that pass the coverage threshold, regardless of whether any reads are edited")
-    parser.add_argument('--mode', default='genomic', help='type of alignment used - default "genomic", '
-                                                          'but can specify "transcriptomic" if bam files in manifest '
-                                                          'are aligned to the transcriptome (recommended to use FLAIR '
-                                                          'quantify with --output_bam to do this)')
     parser.add_argument('--keep_intermediate', default=False, action='store_true',
                         help='''specify if intermediate and temporary files are to be kept for debugging.''')
     args = parser.parse_args()
     return args
 
+def extract_sample_data(manifestfile):
+    sampledata = []
+    for line in open(manifestfile):
+        line = line.rstrip().split()
+        sampledata.append(line)
+    return sampledata
+
+def extract_varinfo(refinfo, alt):
+    chrom, gpos, id, ref = refinfo
+    alt = list(alt)
+    gpos = int(gpos)
+    return chrom, gpos, ref, alt
+
+def get_potential_genes(chrom, gpos, chrregiontogenes):
+    chromregion1, chromregion2 = (chrom, math.floor(gpos / (10 ** 7)) * 10 ** 7), \
+                                 (chrom, (math.floor(gpos / (10 ** 7)) + 1) * 10 ** 7)
+    potgenes = set()
+    if chromregion1 in chrregiontogenes:
+        potgenes.update(chrregiontogenes[chromregion1])
+    if chromregion2 in chrregiontogenes:
+        potgenes.update(chrregiontogenes[chromregion2])
+    return potgenes
+
+def process_bedline(bed):
+    thischr, iso, dir, start, end = bed.chrom, bed.name, bed.strand, bed.chromStart, bed.chromEnd
+    gene = bed.gene_id
+    esizes = [len(blk) for blk in bed.blocks]
+    estarts = [blk.start - start for blk in bed.blocks]
+    exonblocks = []  # block is gstart, tstart, len
+    if dir == '-':
+        esizes = esizes[::-1]
+        estarts = estarts[::-1]
+    currtstart = 0
+    for i in range(len(esizes)):
+        exonblocks.append((currtstart, estarts[i] + start, esizes[i], thischr, dir))
+        currtstart += esizes[i]
+    exonblocks.sort()
+
+    return thischr, iso, dir, start, esizes, estarts, end, exonblocks, currtstart, gene
+
+
+def add_gene_to_boundaries(genestoboundaries, gene, thischr, dir, start, end):
+    if gene not in genestoboundaries:
+        genestoboundaries[gene] = [thischr, dir, start, end]
+    else:
+        if start < genestoboundaries[gene][2]:
+            genestoboundaries[gene][2] = start
+        if end > genestoboundaries[gene][3]:
+            genestoboundaries[gene][3] = end
+    return genestoboundaries
+
+def add_iso_to_blocks(isotoblocks, iso, exonblocks):
+    if iso not in isotoblocks:
+        isotoblocks[iso] = exonblocks
+    else:
+        tstartadj = isotoblocks[iso][-1][0] + isotoblocks[iso][-1][2]
+        exonblocks = [(x[0] + tstartadj,) + x[1:] for x in exonblocks]
+        isotoblocks[iso].extend(exonblocks)
+    return isotoblocks
+
+def get_bedisoform_info(bedisofile):
+    isotoblocks = {}
+    genetoiso = {}
+    chrregiontogenes, genestoboundaries = {}, {}
+    for bed in BedReader(bedisofile, bedClass=FlairBed):
+        thischr, iso, dir, start, esizes, estarts, end, exonblocks, currtstart, gene = process_bedline(bed)
+
+        if iso[:10] == 'fusiongene':
+            iso = '_'.join(iso.split('_')[1:])
+
+        isotoblocks = add_iso_to_blocks(isotoblocks, iso, exonblocks)
+
+        if gene not in genetoiso:
+            genetoiso[gene] = set()
+        genetoiso[gene].add(iso)
+
+        chromregion = (thischr, math.floor(start / (10 ** 7)) * 10 ** 7)
+        if chromregion not in chrregiontogenes:
+            chrregiontogenes[chromregion] = set()
+        chrregiontogenes[chromregion].add(gene)
+
+        genestoboundaries = add_gene_to_boundaries(genestoboundaries, gene, thischr, dir, start, end)
+    return isotoblocks, genetoiso, chrregiontogenes, genestoboundaries
+
 # this is called by extract_vcf_vars
-def _add_vcf_var(vcfvars, chrom, ref, alts, tpos2, name):
+def add_vcf_var(vcfvars, chrom, ref, alts, tpos2, name):
     roundedpos = math.floor(tpos2 / (10 ** 6)) * 10 ** 6
     poskey = (chrom, roundedpos)
     if poskey not in vcfvars:
@@ -50,7 +133,7 @@ def _add_vcf_var(vcfvars, chrom, ref, alts, tpos2, name):
     vcfvars[poskey][tpos2] = (ref, alts, name)
     return vcfvars
 
-def _get_correct_vcf_vars(vcfvars, refname, startpos, endpos):
+def get_correct_vcf_vars(vcfvars, refname, startpos, endpos):
     myvcfvars = {}
     for roundedpos in range(math.floor(startpos / (10 ** 6)) * 10 ** 6, math.ceil(endpos / (10 ** 6)) * 10 ** 6, 10**6):
         if (refname, roundedpos) in vcfvars:
@@ -75,7 +158,7 @@ def _parse_cigar(cigar, alignstart, transcriptvars):
     return coveredvars
 
 
-def _parse_single_bam_read(s, tempdir, vcfvars, sampleindex, tempfilename):  # add mode
+def parse_single_bam_read(s, tempdir, vcfvars, sampleindex, tempfilename):
     """for each read, figure out what variants it overlaps with. Then figure out whether it's modified or not at that variant"""
     # check for which vars are covered
     coveredvars = _parse_cigar(s.cigartuples, s.reference_start, vcfvars)
@@ -100,10 +183,10 @@ def _parse_single_bam_read(s, tempdir, vcfvars, sampleindex, tempfilename):  # a
                 '\t'.join([s.reference_name, str(sampleindex) + '__' + s.query_name, ';'.join(coveredvarstrings)]) + '\n')
 
 
-def read_vars_to_genome_pos_counts(tempfilenames, tempdir, outprefix, mode, sampledata, threshold, output_all):  # noqa: C901 - FIXME: reduce complexity
+def read_vars_to_genome_pos_counts(tempfilenames, tempdir, outprefix, sampledata, threshold, output_all):  # noqa: C901 - FIXME: reduce complexity
     samplenames = [x[0] for x in sampledata]
 
-    with open(f'{outprefix}.{mode}.var.counts.tsv', 'w') as out, open(f'{outprefix}.{mode}.vargroup.counts.tsv', 'w') as out2:
+    with open(f'{outprefix}.var.counts.tsv', 'w') as out, open(f'{outprefix}.vargroup.counts.tsv', 'w') as out2:
         out.write('\t'.join(['varpos', 'gene', 'transcript'] + samplenames) + '\n')
         vartocounts = {}
         vargroup_to_data = {}
@@ -135,14 +218,9 @@ def read_vars_to_genome_pos_counts(tempfilenames, tempdir, outprefix, mode, samp
                     # each mut: position, varname (may be chrom:pos or gene), varstatus
                     sampleindex = int(readname.split('__')[0])
                     for m in allmuts:
-                        if mode == 'genomic':
-                            varpos = refname + ':' + m[0]
-                            gene = m[1]
-                            transcript = ''
-                        else:
-                            varpos = m[1]
-                            gene = refname.split('_')[-1]
-                            transcript = '_'.join(refname.split('_')[:-1])
+                        varpos = refname + ':' + m[0]
+                        gene = m[1]
+                        transcript = ''
                         var = (varpos, gene, transcript)
                         if var not in vartocounts:
                             vartocounts[var] = [[0, 0] for x in range(len(samplenames))]  # [unmod counts, mod counts]
@@ -164,31 +242,77 @@ def read_vars_to_genome_pos_counts(tempfilenames, tempdir, outprefix, mode, samp
                 outline = list(var) + varcounts
                 out.write('\t'.join(outline) + '\n')
 
+def retrieve_good_iso_pos(potgenes, genestoboundaries, gpos, genetoiso, isotoblocks):
+    for gene in potgenes:
+        genechr, genedir, genestart, geneend = genestoboundaries[gene]
+        if genestart <= gpos < geneend:
+            for iso2 in genetoiso[gene]:
+                blocks = isotoblocks[iso2]
+                tpos2 = None
+                for tstart, gstart, bsize, thischr, dir in blocks:
+                    if gstart <= gpos < gstart + bsize:
+                        if dir == '+':
+                            tpos2 = tstart + (gpos - gstart)
+                        else:
+                            tpos2 = (tstart + bsize + 1) - (gpos - gstart)
+                        break
+                if tpos2:
+                    yield gene, iso2, tpos2
 
 def group_annotated_ref_vars(vartoalt, chrregiontogenes, genestoboundaries, genetoiso, isotoblocks):
     vcfvars = {}
     for refinfo in vartoalt:
-        chrom, gpos, ref, alts = fv.extract_varinfo(refinfo, vartoalt[refinfo])
+        chrom, gpos, ref, alts = extract_varinfo(refinfo, vartoalt[refinfo])
 
-        potgenes = fv.get_potential_genes(chrom, gpos, chrregiontogenes)
+        potgenes = get_potential_genes(chrom, gpos, chrregiontogenes)
 
         overlapgenes = set()
         # THIS MAY BE THE BOTTLENECK
-        for gene, _, _ in fv.retrieve_good_iso_pos(potgenes, genestoboundaries, gpos, genetoiso, isotoblocks):
+        for gene, _, _ in retrieve_good_iso_pos(potgenes, genestoboundaries, gpos, genetoiso, isotoblocks):
             overlapgenes.add(gene)
-        vcfvars = _add_vcf_var(vcfvars, chrom, ref, alts, gpos, ','.join(overlapgenes))
+        vcfvars = add_vcf_var(vcfvars, chrom, ref, alts, gpos, ','.join(overlapgenes))
     return vcfvars
 
+def combine_vcf_files(vcffilelist):
+    vartoalt = {}
+    for samplevcf in vcffilelist:
+        for line in open(samplevcf):
+            if line[0] != '#':
+                line = line.rstrip().split('\t')
+                refinfo, alt = tuple(line[:4]), line[4]
+                if refinfo not in vartoalt:
+                    vartoalt[refinfo] = set()
+                vartoalt[refinfo].add(alt)
+    return vartoalt
 
-fv.add_vcf_var = _add_vcf_var
-fv.parse_single_bam_read = _parse_single_bam_read
-fv.get_correct_vcf_vars = _get_correct_vcf_vars
+def parse_all_bam_files(sampledata, tempdir, vcfvars):
+    for sindex in range(len(sampledata)):
+        sample, bamfile = sampledata[sindex][0], sampledata[sindex][1]
+        samfile = pysam.AlignmentFile(bamfile, 'rb')
+        c = 0
+        for s in samfile:
+            if s.is_mapped:  # and not s.is_supplementary: ##not s.is_secondary and
+                c += 1
+                if c % 100000 == 0:
+                    print(c, 'reads checked')
+                tempfilename = s.reference_name
+                myvcfvars = get_correct_vcf_vars(vcfvars, s.reference_name, s.reference_start, s.reference_end)
+                parse_single_bam_read(s, tempdir, myvcfvars, sindex, tempfilename)
+        samfile.close()
+        print('done parsing reads for', sample)
+
+def get_genes_from_tempdir(tempdir):
+    genenames = set()
+    for f in os.listdir(tempdir):
+        if f[0] != '.' and 'processed' not in f:
+            genenames.add(f.split('.txt')[0])
+    return genenames
 
 def quantvarpos():
     args = parse_var_args()
     # Load reference data
     if args.manifest:
-        sampledata = fv.extract_sample_data(args.manifest)
+        sampledata = extract_sample_data(args.manifest)
     elif args.input_bam and (args.pos_ref or args.vcf):
         if args.vcf:
             sampledata = [['sample', args.input_bam, args.vcf]]
@@ -201,13 +325,10 @@ def quantvarpos():
 
     vcfvars = {}
     if args.manifest or args.vcf:
-        isotoblocks, genetoiso, chrregiontogenes, genestoboundaries = fv.get_bedisoform_info(args.bedisoforms)
-        vartoalt = fv.combine_vcf_files([x[2] for x in sampledata if len(x) > 2])
+        isotoblocks, genetoiso, chrregiontogenes, genestoboundaries = get_bedisoform_info(args.bedisoforms)
+        vartoalt = combine_vcf_files([x[2] for x in sampledata if len(x) > 2])
         print('done combining vcfs')
-        if args.mode == 'transcriptomic':
-            vcfvars = fv.convert_vars_to_tpos(vartoalt, isotoblocks, genetoiso, chrregiontogenes, genestoboundaries)
-        else:
-            vcfvars = group_annotated_ref_vars(vartoalt, chrregiontogenes, genestoboundaries, genetoiso, isotoblocks)
+        vcfvars = group_annotated_ref_vars(vartoalt, chrregiontogenes, genestoboundaries, genetoiso, isotoblocks)
     else:
         for line in open(args.pos_ref):
             line = line.rstrip('\n').split('\t')
@@ -220,11 +341,11 @@ def quantvarpos():
             vcfvars[poskey][pos] = (ref, alts, name)
 
     print('done combining vcf variants')
-    tempdir = fv.make_temp_dir(args.output_prefix)
-    fv.parse_all_bam_files(sampledata, tempdir, vcfvars, args.mode)  # parses to intermediate files with read name to all vars
+    tempdir = make_temp_dir(args.output_prefix)
+    parse_all_bam_files(sampledata, tempdir, vcfvars)  # parses to intermediate files with read name to all vars
     print('parsed all reads')
-    genenames = fv.get_genes_from_tempdir(tempdir)
-    read_vars_to_genome_pos_counts(genenames, tempdir, args.output_prefix, args.mode, sampledata, args.threshold, args.output_all)
+    genenames = get_genes_from_tempdir(tempdir)
+    read_vars_to_genome_pos_counts(genenames, tempdir, args.output_prefix, sampledata, args.threshold, args.output_all)
 
     if not args.keep_intermediate:
         shutil.rmtree(tempdir)

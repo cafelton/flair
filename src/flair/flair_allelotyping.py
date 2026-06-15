@@ -3,11 +3,9 @@
 import argparse
 import pysam
 from gtf_io import load_gtf_to_gene_data
-# from flair.io_utils import make_temp_dir
-# import networkx as nx
 from copy import deepcopy
 import graphviz
-import variant_processing as vp
+import flair.variant_processing as vp
 
 
 def parse_args():

@@ -589,16 +589,10 @@ ${ALIGN_LONGSHOT}: ${GENOME_FA} ${TEST_ALIGN_BAM}
 	longshot --force_overwrite --bam ${TEST_ALIGN_BAM} --ref ${GENOME_FA} --out ${ALIGN_LONGSHOT} --min_cov 3 --min_alt_count 3 --strand_bias_pvalue_cutoff 0.000001
 
 
-variants-tests:  test-variants test-alleles test-isoalleles test-variants-help
+variants-tests:  test-alleles test-isoalleles test-variantquant
 
 # longshot is not currently include in the docker container
 have_longshot := $(shell which longshot >/dev/null 2>&1 && echo yes || echo no)
-
-# ifeq (${have_longshot},yes)
-# test-variants: mkdirs ${GENOME_FA} ${TEST_QUANTIFY_B1_BAM} ${BASIC_ISOFORMS_OUT_FAI} ${B1_GENOME_ALIGNED_BAM} ${B1_LONGSHOT}
-# 	flair variants -m $I/test-variants.varmanifest.tsv -i $(BASIC_ISOFORMS_OUT_FA) -b $(BASIC_ISOFORMS_BED) -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@
-# 	$(call cmp_expect,$@.isoswithvars.counts.tsv)
-# 	$(call cmp_expect,$@.aaseq.counts.tsv)
 
 test-alleles: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
 	flair alleles --bam ${TEST_ALIGN_BAM} --vcf ${ALIGN_LONGSHOT} -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@ --generate_map --annotate_bams
@@ -608,22 +602,9 @@ test-isoalleles: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
 	flair isoalleles --bam ${TEST_ALIGN_BAM} --vcf ${ALIGN_LONGSHOT} -g ${GENOME_FA}  --isoform_bed $E/test-transcriptome.isoforms.bed --read_map $E/test-transcriptome.isoform.read.map.txt -o $O/$@ --generate_map --annotate_bams
 	$(call cmp_expect,$@.isoforms.allelegroups.bed)
 
-ifeq (${have_longshot},yes)
-test-variants: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
-# 	flair variants -m $I/test-variants.varmanifest.tsv -i $E/test-transcriptome.isoforms.fa -b $E/test-transcriptome.isoforms.bed -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@
-	flair variants -m $I/test-variants.varmanifest.tsv -i $(BASIC_ISOFORMS_OUT_FA) -b $(BASIC_ISOFORMS_BED) -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@ --keep_intermediate
-	$(call cmp_expect,$@.isoswithvars.counts.tsv)
-	$(call cmp_expect,$@.aaseq.counts.tsv)
-else
-test-variants:
-	@echo 'WARNING: ***' >&2
-	@echo 'WARNING: *** longshot command not found, test-variants skipped' >&2
-	@echo 'WARNING: ***' >&2
-endif
-
-test-variants-help: mkdirs
-	flair variants --help > $O/$@.out
-	$(call cmp_expect,$@.out)
+test-variantquant: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
+	flair variantquant -i ${TEST_ALIGN_BAM} --vcf ${ALIGN_LONGSHOT} -b $E/test-transcriptome.isoforms.bed -o $O/$@
+	$(call cmp_expect_sort,$@.var.counts.tsv)
 
 
 ###
