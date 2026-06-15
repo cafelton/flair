@@ -383,7 +383,7 @@ def identify_corrected_ends(exoninfo, startpos, endpos, gtstrand, tname, output_
             left_end_dist, right_end_dist = right_end_dist, left_end_dist
     return (left_intron_index, left_dist, left_end_dist, left_clipping), (right_intron_index, right_dist, right_end_dist, right_clipping)
 
-def return_best_transcript_stringent(passing_transcripts, genomicclipping, soft_clipping_buffer):
+def return_best_transcript_stringent(passing_transcripts, genomicclipping, soft_clipping_buffer, rname):
     # check that any of the alignments have low clipping
     # if there's no genomic clipping info, skip this first filter (will filter for minimum clipping later)
     if genomicclipping is None or any([x[-2][3] < soft_clipping_buffer and x[-1][3] < soft_clipping_buffer for x in passing_transcripts]):
@@ -487,7 +487,7 @@ def get_best_transcript(tinfo, info, genomicclipping,
             passing_transcripts.sort()
             return [passing_transcripts[0][-3:], ]
         else:
-            return return_best_transcript_stringent(passing_transcripts, genomicclipping, soft_clipping_buffer)
+            return return_best_transcript_stringent(passing_transcripts, genomicclipping, soft_clipping_buffer, rname)
     else:
         logging.debug(f"{rname} read dropped: no transcripts passed filters")
         return None
