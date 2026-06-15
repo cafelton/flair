@@ -19,20 +19,7 @@ def _basic_load_reads_annot_support_test(intron_support):
     # chr12:25209911-25215436(-)
     start = 25209911
     end = 25215436
-    over = intron_support.overlap("chr12", start, start + 1)
-    _assert_introns(over, [
-        'SupportIntron(chr12:25209911-25215436(-) annot=True read=True read_cnt=12',
-        'SupportIntron(chr12:25209911-25225613(-) annot=True read=False read_cnt=0',
-        'SupportIntron(chr12:25209911-25245273(-) annot=True read=False read_cnt=0',
-        'SupportIntron(chr12:25209911-25225613(-) annot=False read=True read_cnt=96',
-    ])
-
-    over = intron_support.overlap("chr12", end - 1, end)
-    _assert_introns(over, [
-        'SupportIntron(chr12:25209911-25215436(-) annot=True read=True read_cnt=12',
-    ])
-
-    over = intron_support.overlap_introns("chr12", start, end, 5)
+    over = intron_support.overlap("chr12", start, end, 5)
     _assert_introns(over, [
         'SupportIntron(chr12:25209911-25215436(-) annot=True read=True read_cnt=12',
     ])

@@ -70,7 +70,7 @@ class IntronSupport:
             return True
         return False
 
-    def overlap_introns(self, chrom, start, end, flank_window=0):
+    def overlap(self, chrom, start, end, flank_window=0):
         """get introns were splice junctions overlap each end of this range,
         with a +/-bp window on either of ends of the range. Empty list if no hits"""
         # only return introns that hit both ends
@@ -85,8 +85,9 @@ class IntronSupport:
         "generator for (chrom, start, end, intron), optionally on a chrom (introns have two entries)"
         chroms = [chrom] if chrom is not None else self.chroms()
         for chrom in chroms:
-            for interval, intron in self.coords_maps[chrom].items():
-                yield chrom, interval.start, interval.end, intron
+            if chrom in self.chroms:
+                for interval, intron in self.coords_maps[chrom].items():
+                    yield chrom, interval.start, interval.end, intron
 
     def introns(self, chrom=None):
         "generator for introns, optionally on a chrom"

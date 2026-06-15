@@ -42,7 +42,7 @@ class JunctionCorrector:
         def _filter_intron(intron):
             return intron.annot_supported or (intron.read_support_cnt > self.min_read_support)
         return list(filter(_filter_intron,
-                           self.intron_support.overlap_introns(chrom, start, end, self.flank_window)))
+                           self.intron_support.overlap(chrom, start, end, self.flank_window)))
 
     def correct_readrec(self, readrec):
         """Correct a ReadRec's junctions and strand in place from intron support.
