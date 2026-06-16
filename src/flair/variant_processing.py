@@ -5,6 +5,7 @@ import vcfpy
 import pysam
 import networkx as nx
 from collections import OrderedDict
+import string
 
 def combine_vcf_files(vcffilelist):
     vartoalt = {}
@@ -232,7 +233,8 @@ def label_bam_file(bamname, output_name, read_to_allele_group):
             for a in bam:
                 if a.is_mapped and not a.is_secondary and not a.is_supplementary:
                     if a.query_name in read_to_allele_group:
-                        a.set_tag('HP', read_to_allele_group[a.query_name])
+                        ps, ag = read_to_allele_group[a.query_name]
+                        a.set_tag('HP', f'{ps}:{ag}')
                 out.write(a)
     pysam.index(output_name)
 
@@ -248,7 +250,9 @@ def generate_new_vcf_header(in_vcf, norm_bam):
             if type(line) in (vcfpy.HeaderLine, vcfpy.ContigHeaderLine):
                 new_header.add_line(line)
     new_header.add_line(vcfpy.HeaderLine('source', 'FLAIR allelotyping'))
-    new_header.add_line(vcfpy.InfoHeaderLine.from_mapping({'ID': 'AG', 'Number': 'R', 'Type': 'String', 'Description': 'Allele group(s) - can be considered a combo of phase set + haplotype'}))
+    new_header.add_line(vcfpy.InfoHeaderLine.from_mapping({'ID': 'PS', 'Number': 1, 'Type': 'Integer', 'Description': 'Phase set - variants within a phase set can be compared/phased'}))
+    new_header.add_line(vcfpy.InfoHeaderLine.from_mapping({'ID': 'AG', 'Number': 'R', 'Type': 'String', 'Description': 'Allele group(s) - only compare these within a phase set'}))
+    new_header.add_line(vcfpy.InfoHeaderLine.from_mapping({'ID': 'DF', 'Number': 1, 'Type': 'Integer', 'Description': '1 means this is a variant that helps differentiate this phase set from others'}))
     new_header.add_line(vcfpy.FormatHeaderLine.from_mapping({'ID': 'GT', 'Number': 1, 'Type': 'String', 'Description': 'Genotype'}))
     new_header.add_line(vcfpy.FormatHeaderLine.from_mapping({'ID': 'DP', 'Number': 1, 'Type': 'Integer', 'Description': 'Read depth'}))
     new_header.add_line(vcfpy.FormatHeaderLine.from_mapping({'ID': 'AD', 'Number': 'R', 'Type': 'Integer', 'Description': 'Allelic depths for the ref and alt alleles in the order listed'}))
@@ -258,26 +262,32 @@ def generate_new_vcf_header(in_vcf, norm_bam):
         new_header.samples = vcfpy.SamplesInfos(['tumor'])
     return new_header
 
-def write_vcf_file(output, new_header, variant_to_allele_group_counts_info, norm_bam, gene_to_allele_groups):
+def write_vcf_file(output, new_header, variant_to_allele_group_counts_info, norm_bam, phaseset_to_allele_groups):
     allele_group_to_final_vars = {}
-    for g in gene_to_allele_groups:
-        for ag in gene_to_allele_groups[g]:
-            allele_group_to_final_vars[ag] = set()
+    for ps in phaseset_to_allele_groups:
+        for ag in phaseset_to_allele_groups[ps]:
+            allele_group_to_final_vars[(ps, ag)] = set()
     with vcfpy.Writer.from_path(output + '.allelegroups.vcf', new_header) as writer:
         format_strings = ['GT', 'DP', 'AD']
         for (chrom, pos, ref, alt), var_data in variant_to_allele_group_counts_info.items():
             tot_cov = var_data['t_cov'] + var_data['n_cov']
             tot_var = var_data['t_var'] + var_data['n_var']
-            # not reporting if homozygous
-            # not reporting if in none or all allele groups
-            if (tot_var != 0 and tot_var != tot_cov) and (len(var_data['ag']) != 0 and len(var_data['ag']) != gene_to_allele_groups[var_data['gene']]):
+            # NEW: reporting homozygous variants + variants in all allele groups - more important for downstream vars
+            if tot_var != 0 and len(var_data['ag']) != 0:
+                is_defining_var = tot_var != tot_cov and len(var_data['ag']) != len(phaseset_to_allele_groups[var_data['ag'][0][0]])
+                gt = '0/1' if is_defining_var else '1/1'
+                is_defining_var = 1 if is_defining_var else 0
                 # FIXME allow other types of alts
                 alt_type = 'SNV'
                 alt_desc = vcfpy.Substitution(alt_type, alt)
-                these_calls = [vcfpy.Call('tumor', {'GT': '0/1', 'DP': var_data['t_cov'], 'AD': [var_data['t_cov'] - var_data['t_var'], var_data['t_var']]})]
+                these_calls = [vcfpy.Call('tumor', {'GT': gt, 'DP': var_data['t_cov'], 'AD': [var_data['t_cov'] - var_data['t_var'], var_data['t_var']]})]
                 if norm_bam is not None:
-                    these_calls.append(vcfpy.Call('normal', {'GT': '0/1', 'DP': var_data['n_cov'], 'AD': [var_data['n_cov'] - var_data['n_var'], var_data['n_var']]}))
-                new_record = vcfpy.Record(chrom, int(pos) + 1, [], ref, [alt_desc], 100, ['PASS'], OrderedDict([('AG', var_data['ag'])]), format_strings, these_calls)
+                    these_calls.append(vcfpy.Call('normal', {'GT': gt, 'DP': var_data['n_cov'], 'AD': [var_data['n_cov'] - var_data['n_var'], var_data['n_var']]}))
+                my_ps = list(set([x[0] for x in var_data['ag']]))
+                if len(my_ps) > 1:
+                    raise ValueError(f'multiple phase sets for one variant {my_ps} {var_data}')
+                my_ag = sorted([x[1] for x in var_data['ag']])
+                new_record = vcfpy.Record(chrom, int(pos) + 1, [], ref, [alt_desc], 100, ['PASS'], OrderedDict([('PS', my_ps[0]), ('AG', my_ag), ('DF', is_defining_var)]), format_strings, these_calls)
                 writer.write_record(new_record)
                 for allele_group in var_data['ag']:
                     # if allele_group not in allele_group_to_final_vars:
@@ -290,54 +300,79 @@ def write_allele_group_counts_read_map(index_to_allele_group_info, output, gener
         fh_map = None
         if generate_map:
             fh_map = open(output + '.allelegroups.read.map.tsv', 'w')
-        outline = ['#group_label', 'gene', 'tumor']
+        outline = ['#phase_set', 'allele_group', 'gene', 'tumor']
         if norm_bam is not None:
             outline.append('normal')
         fh.write('\t'.join(outline) + '\n')
         if generate_map:
             fh_map.write('\t'.join(outline) + '\n')
-        for group_label, group_info in index_to_allele_group_info.items():
-            ol = [group_label, group_info['gene'], group_info['t']]
+        for (ps, ag), group_info in index_to_allele_group_info.items():
+            ol = [str(ps), ag, group_info['gene'], group_info['t']]
             if norm_bam is not None:
                 ol.append(group_info['n'])
-            fh.write('\t'.join(ol[:2] + [str(len(x)) for x in ol[2:]]) + '\n')
+            fh.write('\t'.join(ol[:3] + [str(len(x)) for x in ol[3:]]) + '\n')
             if generate_map:
-                fh_map.write('\t'.join(ol[:2] + [','.join(x) for x in ol[2:]]) + '\n')
+                fh_map.write('\t'.join(ol[:3] + [','.join(x) for x in ol[3:]]) + '\n')
         if generate_map:
             fh_map.close()
 
-def make_allele_group_label(group, allele_group_count, allele_group_to_reads, norm_bam, read_support):
+def make_allele_group_label(phaseset, group, allele_group_count, allele_group_to_reads, norm_bam, read_support):
     tot_reads_for_file = {'t': 0, 'n': 0}
     for file_label, read in allele_group_to_reads[group]:
         tot_reads_for_file[file_label] += 1
-    allele_group_label = str(allele_group_count)
+    allele_group_label = (phaseset, string.ascii_uppercase[allele_group_count])
     # identify if is somatic
     if norm_bam is not None and tot_reads_for_file['n'] < read_support:
         allele_group_label += '-S'
     allele_group_count += 1
     return allele_group_count, allele_group_label
 
-
-def get_allele_group_info(allele_group_to_reads, allele_group_count, var_info, gene_id, gene_chrom, index_to_allele_group_info, file_to_read_to_allele_group, variant_to_allele_group_counts_info, gene_to_allele_groups, norm_bam, read_support):
-    gene_to_allele_groups[gene_id] = set()
+def get_phase_sets(allele_group_to_reads, var_info, phaseset_count):
+    pos_ranges = []
     for group in allele_group_to_reads:
-        allele_group_count, allele_group_label = make_allele_group_label(group, allele_group_count, allele_group_to_reads, norm_bam, read_support)
-        gene_to_allele_groups[gene_id].add(allele_group_label)
-
-        index_to_allele_group_info[allele_group_label] = {'gene': gene_id, 'vars': var_info, 'has_vars': group, 't': set(), 'n': set()}
-        for file_label, read in allele_group_to_reads[group]:
-            file_to_read_to_allele_group[file_label][read] = allele_group_label
-            index_to_allele_group_info[allele_group_label][file_label].add(read)
-
+        covered_pos = []
         for varindex, is_var in group:
-            pos, ref, alt = var_info[varindex].split(';')
-            var_data = (gene_chrom, pos, ref, alt)
-            if var_data not in variant_to_allele_group_counts_info:
-                variant_to_allele_group_counts_info[var_data] = {'gene': gene_id, 'ag': [], 't_cov': 0, 't_var': 0, 'n_cov': 0, 'n_var': 0}
-            if is_var == 1:
-                variant_to_allele_group_counts_info[var_data]['ag'].append(allele_group_label)
+            covered_pos.append(int(var_info[varindex].split(';')[0]))
+        pos_ranges.append((min(covered_pos), max(covered_pos), group))
+    pos_ranges.sort()
+    phaseset_to_groups = {}
+    lastend, grouped = -1, []
+    for start, end, group in pos_ranges:
+        if start > lastend:
+            if len(grouped) > 0:
+                phaseset_to_groups[phaseset_count] = grouped
+                phaseset_count += 1
+                grouped = []
+        if start > lastend or end > lastend:
+            lastend = end
+        grouped.append(group)
+    if len(grouped) > 0:
+        phaseset_to_groups[phaseset_count] = grouped
+        phaseset_count += 1
+    return phaseset_to_groups, phaseset_count
 
-    return allele_group_count
+def get_allele_group_info(allele_group_to_reads, phaseset_count, var_info, gene_id, gene_chrom, index_to_allele_group_info, file_to_read_to_allele_group, variant_to_allele_group_counts_info, phaseset_to_allele_groups, norm_bam, read_support):
+    phaseset_to_groups, phaseset_count = get_phase_sets(allele_group_to_reads, var_info, phaseset_count)
+    for ps in phaseset_to_groups:
+        allele_group_count = 0
+        phaseset_to_allele_groups[ps] = set()
+        for group in phaseset_to_groups[ps]:
+            allele_group_count, allele_group_label = make_allele_group_label(ps, group, allele_group_count, allele_group_to_reads, norm_bam, read_support)
+            phaseset_to_allele_groups[ps].add(allele_group_label[1])
+            index_to_allele_group_info[allele_group_label] = {'gene': gene_id, 'vars': var_info, 'has_vars': group, 't': set(), 'n': set()}
+            for file_label, read in allele_group_to_reads[group]:
+                file_to_read_to_allele_group[file_label][read] = allele_group_label
+                index_to_allele_group_info[allele_group_label][file_label].add(read)
+
+            for varindex, is_var in group:
+                pos, ref, alt = var_info[varindex].split(';')
+                var_data = (gene_chrom, pos, ref, alt)
+                if var_data not in variant_to_allele_group_counts_info:
+                    variant_to_allele_group_counts_info[var_data] = {'gene': gene_id, 'ag': [], 't_cov': 0, 't_var': 0, 'n_cov': 0, 'n_var': 0}
+                if is_var == 1:
+                    variant_to_allele_group_counts_info[var_data]['ag'].append(allele_group_label)
+
+    return phaseset_count
 
 def get_variant_final_coverage(readvarinfo_to_reads, var_info, gene_chrom, variant_to_allele_group_counts_info):
     for og_group in readvarinfo_to_reads:

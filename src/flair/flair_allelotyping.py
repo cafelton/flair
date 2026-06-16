@@ -2,7 +2,7 @@
 
 import argparse
 import pysam
-from gtf_io import load_gtf_to_gene_data, GtfExon
+from flair.gtf_io import load_gtf_to_gene_data, GtfExon
 from copy import deepcopy
 import graphviz
 from flair.pycbio.hgdata.bed import BedReader
@@ -124,8 +124,8 @@ def getvariants():
     file_to_read_to_allele_group = {'t': {}, 'n': {}}
     index_to_allele_group_info = {}
     variant_to_allele_group_counts_info = {}
-    gene_to_allele_groups = {}
-    allele_group_count = 1
+    phaseset_to_allele_groups = {}
+    phaseset_count = 1
     # TODO can parallelize at the gene level, will need to write to intermediate files
     for gene_id in gene_to_vars:
         # only process reads if gene has variants
@@ -138,16 +138,16 @@ def getvariants():
             allele_group_to_reads = vp.process_alleotype_graph(deepcopy(readvarinfo_to_reads), args.read_support, args.frac_support)
 
             # don't report if there's only one final group
-            if len(allele_group_to_reads) > 1:
-                allele_group_count = vp.get_allele_group_info(allele_group_to_reads, allele_group_count, var_info, gene_id, gene_chrom, index_to_allele_group_info,
-                                                              file_to_read_to_allele_group, variant_to_allele_group_counts_info, gene_to_allele_groups, args.norm_bam, args.read_support)
+            # if len(allele_group_to_reads) > 1: allele_group_to_reads, phaseset_count, var_info, gene_id
+            phaseset_count = vp.get_allele_group_info(allele_group_to_reads, phaseset_count, var_info, gene_id, gene_chrom, index_to_allele_group_info,
+                                                      file_to_read_to_allele_group, variant_to_allele_group_counts_info, phaseset_to_allele_groups, args.norm_bam, args.read_support)
 
-                # getting variant coverage from original assignments, not collapsed ones
-                vp.get_variant_final_coverage(readvarinfo_to_reads, var_info, gene_chrom, variant_to_allele_group_counts_info)
+            # getting variant coverage from original assignments, not collapsed ones
+            vp.get_variant_final_coverage(readvarinfo_to_reads, var_info, gene_chrom, variant_to_allele_group_counts_info)
 
     print('writing vcf file')
     new_header = vp.generate_new_vcf_header(args.vcf, args.norm_bam)
-    vp.write_vcf_file(args.output, new_header, variant_to_allele_group_counts_info, args.norm_bam, gene_to_allele_groups)
+    vp.write_vcf_file(args.output, new_header, variant_to_allele_group_counts_info, args.norm_bam, phaseset_to_allele_groups)
 
     vp.write_allele_group_counts_read_map(index_to_allele_group_info, args.output, args.generate_map, args.norm_bam)
 
