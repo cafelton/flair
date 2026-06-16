@@ -166,13 +166,13 @@ BASIC_COUNTS_MATRIX = $I/basic.counts_matrix_diffexp.tsv
 BASIC_DIFFSPLICE_MATRIX = $I/basic.counts_matrix_diffsplice.tsv
 BASIC_DIFFSPLICE_BED = $I/test-collapse-annot.isoforms.bed
 
-# FIXME: recreate these files with transcriptome, and others below 
-BASIC_ISOFORMS_FA = $E/test-collapse-annot.isoforms.fa
-BASIC_ISOFORMS_BED = $E/test-collapse-annot.isoforms.bed
+# # FIXME: recreate these files with transcriptome, and others below 
+# BASIC_ISOFORMS_FA = $E/test-collapse-annot.isoforms.fa
+BASIC_ISOFORMS_BED = $I/test-collapse-annot.isoforms.bed
 
-# copy so *.fai does end up in expect directory
-BASIC_ISOFORMS_OUT_FA = $O/test-collapse-annot.isoforms.fa
-BASIC_ISOFORMS_OUT_FAI = $O/test-collapse-annot.isoforms.fa.fai
+# # copy so *.fai does end up in expect directory
+# BASIC_ISOFORMS_OUT_FA = $O/test-collapse-annot.isoforms.fa
+# BASIC_ISOFORMS_OUT_FAI = $O/test-collapse-annot.isoforms.fa.fai
 
 TOME_OUT_FA = $O/test-transcriptome.isoforms.fa
 TOME_OUT_FAI = $O/test-transcriptome.isoforms.fa.fai
@@ -189,29 +189,36 @@ TEST_QUANTIFY_B1_BAM = $O/test-quantify.B1.B.flair.aligned.bam
 ###
 # seg1: single exon tests
 ###
-SEG1_READS_FQ = input/seg1.cdna-ont.fastq
-SEG1_ANNOTATION = input/seg1.gencodeV47.gtf
-SEG1_PROMOTER_REGIONS = input/seg1.promoter-regions.bed
+SEG1_READS_FQ = $I/seg1.cdna-ont.fastq
+SEG1_ANNOTATION = $I/seg1.gencodeV47.gtf
+SEG1_PROMOTER_REGIONS = $I/seg1.promoter-regions.bed
 
-SEG1_ALIGN_BED = $E/test-align-seg1.bed
+# SEG1_ALIGN_BED = $E/test-align-seg1.bed
 SEG1_ALIGN_BAM = $O/test-align-seg1.bam
-SEG1_ISOFORMS_FA = expected/test-collapse-seg1.isoforms.fa
-SEG1_ISOFORMS_BED = expected/test-collapse-seg1.isoforms.bed
+# SEG1_ISOFORMS_FA = expected/test-collapse-seg1.isoforms.fa
+# SEG1_ISOFORMS_BED = expected/test-collapse-seg1.isoforms.bed
 
 ##
 # mutant splice site, BED is truth
 ##
-DDX5_READTHROUGH_FQ = input/DDX5_readthrough.badread40x.fastq
-DDX5_READTHROUGH_BAM = output/DDX5_readthrough_sim_badread40x.bam
-DDX5_READTHROUGH_ANNOT = input/DDX5_POLG2_gencode38.gtf
-DDX5_READTHROUGH_SJ = input/DDX5_readthrough_IPSJ.bed
+DDX5_READTHROUGH_FQ = $I/DDX5_readthrough.badread40x.fastq
+DDX5_READTHROUGH_BAM = $O/DDX5_readthrough_sim_badread40x.bam
+DDX5_READTHROUGH_ANNOT = $I/DDX5_POLG2_gencode38.gtf
+DDX5_READTHROUGH_SJ = $I/DDX5_readthrough_IPSJ.bed
 
-KRAS_MUT_SPLICE_FQ = input/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.fastq
-KRAS_MUT_SPLICE_BAM = output/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.bam
-KRAS_MUT_SPLICE_SJ_BED = input/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.sj.bed
-KRAS_MUT_SPLICE_SJ_BB = output/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.sj.bb
-KRAS_MUT_SPLICE_BED = input/KRAS_sim_genomic_mut_driven_splicing.bed
-KRAS_MUT_SPLICE_BB = output/KRAS_sim_genomic_mut_driven_splicing.bb
+KRAS_MUT_SPLICE_FQ = $I/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.fastq
+KRAS_MUT_SPLICE_BAM = $O/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.bam
+KRAS_MUT_SPLICE_SJ_BED = $I/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.sj.bed
+KRAS_MUT_SPLICE_SJ_BB = $O/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.sj.bb
+KRAS_MUT_SPLICE_BED = $I/KRAS_sim_genomic_mut_driven_splicing.bed
+KRAS_MUT_SPLICE_BB = $O/KRAS_sim_genomic_mut_driven_splicing.bb
+
+COMBINE_MANIFEST = $I/combine_manifest_bed-only.txt
+QUANTIFY_MANIFEST = $I/basic.reads_manifest_bam.txt
+SPLICEEVENTS_MANIFEST = $I/spliceevents.manifest.tsv
+
+TOME_ISOFORM_BED = $E/test-transcriptome.isoforms.bed
+TOME_READ_MAP = $E/test-transcriptome.isoform.read.map.txt
 
 # The help test results vary on screen width.  This forces them to be consistent.
 # It might seem weird to see if help works, but some it did break in the past.
@@ -312,7 +319,7 @@ update-combine-tests:
 	done
 
 test-combine: mkdirs
-	flair combine --manifest $I/combine_manifest_bed-only.txt --genome ${GENOME_FA} -o $O/$@
+	flair combine --manifest $(COMBINE_MANIFEST) --genome ${GENOME_FA} -o $O/$@
 # 	$(call cmp_expect_bed_simple,$@.combined.isoforms.bed)
 	$(combine_diff)
 
@@ -322,42 +329,41 @@ test-combine-files: mkdirs
 	$(combine_diff)
 
 test-combine-nose: mkdirs
-	flair combine --manifest $I/combine_manifest_bed-only.txt --genome ${GENOME_FA} -o $O/$@ --remove_se
+	flair combine --manifest $(COMBINE_MANIFEST) --genome ${GENOME_FA} -o $O/$@ --remove_se
 # 	$(call cmp_expect_bed_simple,$@.combined.isoforms.bed)
 	$(combine_diff)
 
 test-combine-10pct: mkdirs
-	flair combine --manifest $I/combine_manifest_bed-only.txt --genome ${GENOME_FA} -o $O/$@ --minpercentusage 10
+	flair combine --manifest $(COMBINE_MANIFEST) --genome ${GENOME_FA} -o $O/$@ --minpercentusage 10
 # 	$(call cmp_expect_bed_simple,$@.combined.isoforms.bed)
 	$(combine_diff)
 
 test-combine-multends: mkdirs
-	flair combine --manifest $I/combine_manifest_bed-only.txt --genome ${GENOME_FA} -o $O/$@ --max_ends 10
+	flair combine --manifest $(COMBINE_MANIFEST) --genome ${GENOME_FA} -o $O/$@ --max_ends 10
 # 	$(call cmp_expect_bed_simple,$@.combined.isoforms.bed)
 	$(combine_diff)
 
 test-combine-multends-10pct: mkdirs
-	flair combine --manifest $I/combine_manifest_bed-only.txt --genome ${GENOME_FA} -o $O/$@ --max_ends 10 --minpercentusage 10
+	flair combine --manifest $(COMBINE_MANIFEST) --genome ${GENOME_FA} -o $O/$@ --max_ends 10 --minpercentusage 10
 # 	$(call cmp_expect_bed_simple,$@.combined.isoforms.bed)
 	$(combine_diff)
 
 ###
 # FLAIR QUANTIFY
 ###
-quantify-tests: test-quantify test-quantify-help
+quantify-tests: test-quantify test-quantify-normends test-quantify-help
 
 test-quantify: mkdirs ${TOME_OUT_FAI} ${QUANTIFY_INPUT_BAMS} ${GENOME_FA}
 	rm -rf $O/$@.intermediate
-# 	flair quantify --manifest $I/basic.reads_manifest_bam.txt --isoform_fa $E/test-transcriptome.isoforms.fa --isoform_bed $E/test-transcriptome.isoforms.bed --generate_map --tpm --sample_id_only -o $O/$@ --with_gene
-	flair quantify --manifest $I/basic.reads_manifest_bam.txt --genome ${GENOME_FA} --isoform_bed $E/test-transcriptome.isoforms.bed --generate_map --tpm --sample_id_only -o $O/$@ --with_gene
+	flair quantify --manifest $(QUANTIFY_MANIFEST) --genome ${GENOME_FA} --isoform_bed $(TOME_ISOFORM_BED) --generate_map --tpm --sample_id_only -o $O/$@ --with_gene
 	$(call cmp_expect,$@.counts.tsv)
 	$(call cmp_expect,$@.tpm.tsv)
 
 test-quantify-normends: mkdirs ${TOME_OUT_FAI} ${QUANTIFY_INPUT_BAMS} ${GENOME_FA}
 	rm -rf $O/$@.intermediate
-	flair quantify --manifest $I/basic.reads_manifest_bam.txt --genome ${GENOME_FA} --isoform_bed $E/test-transcriptome.isoforms.bed --generate_map --tpm --sample_id_only -o $O/$@ --with_gene --norm_ends
-# 	$(call cmp_expect,$@.counts.tsv)
-# 	$(call cmp_expect,$@.tpm.tsv)
+	flair quantify --manifest $(QUANTIFY_MANIFEST) --genome ${GENOME_FA} --isoform_bed $(TOME_ISOFORM_BED) --generate_map --tpm --sample_id_only -o $O/$@ --with_gene --norm_ends
+	$(call cmp_expect,$@.counts.tsv)
+	$(call cmp_expect,$@.tpm.tsv)
 
 test-quantify-help: mkdirs
 	flair quantify --help > $O/$@.out
@@ -414,27 +420,9 @@ test-bed-to-gtf : mkdirs
 	$(call cmp_expect,$@.gtf)
 
 test-bed-to-gtf-extracols : 
-	bed_to_gtf --is_flair_bed $E/test-transcriptome.isoforms.bed > $O/$@.gtf
+	bed_to_gtf --is_flair_bed $(TOME_ISOFORM_BED) > $O/$@.gtf
 	$(call cmp_expect,$@.gtf)
 
-##
-# PREDICT PRODUCTIVITY
-##
-# predict-productivity-tests: test-predict-productivity test-predict-productivity-extracols test-predict-productivity-help
-
-# test-predict-productivity : mkdirs ${GENOME_FA}
-# 	predictProductivity -i $(BASIC_ISOFORMS_BED) -g $(BASIC_ANNOTATION) -f ${GENOME_FA} -o $O/$@
-# 	$(call cmp_expect,$@.bed)
-# 	$(call cmp_expect,$@.info.tsv)
-
-# test-predict-productivity-extracols : mkdirs ${GENOME_FA}
-# 	predictProductivity -i $E/test-transcriptome-noannot.isoforms.bed -g $(BASIC_ANNOTATION) -f ${GENOME_FA} -o $O/$@ --is_flair_bed
-# 	$(call cmp_expect,$@.bed)
-# 	$(call cmp_expect,$@.info.tsv)
-
-# test-predict-productivity-help: mkdirs
-# 	predictProductivity --help > $O/$@.out
-# 	$(call cmp_expect,$@.out)
 
 ##
 # DIFF ISO USAGE
@@ -449,15 +437,15 @@ test-diff-iso-usage-help: mkdirs
 	diff_iso_usage --help > $O/$@.out
 	$(call cmp_expect,$@.out)
 
-##
-# plot isoform usage
-##
-plot-usage-tests: test-plot-usage test-plot-usage-help
+# ##
+# # plot isoform usage
+# ##
+plot-usage-tests: test-plot-usage-help
 
-test-plot-usage: mkdirs
-	plot_isoform_usage expected/test-predict-productivity.bed expected/test-collapse-annot.annotated_transcripts.alignment.counts ENSG00000133703.12 -o $O/$@
-	file $O/test-plot-usage_isoforms.png | grep 'PNG image data' >/dev/null
-	file $O/test-plot-usage_usage.png | grep 'PNG image data' >/dev/null
+# test-plot-usage: mkdirs
+# 	plot_isoform_usage expected/test-predict-productivity.bed expected/test-collapse-annot.annotated_transcripts.alignment.counts ENSG00000133703.12 -o $O/$@
+# 	file $O/test-plot-usage_isoforms.png | grep 'PNG image data' >/dev/null
+# 	file $O/test-plot-usage_usage.png | grep 'PNG image data' >/dev/null
 
 test-plot-usage-help: mkdirs
 	plot_isoform_usage --help > $O/$@.out
@@ -485,6 +473,8 @@ test-transcriptome: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --keep_intermediate --generate_map
 # 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
 	$(diff_bed_gtf)
+	$(call cmp_expect,$@.isoforms.fa)
+	$(call cmp_expect,$@.isoform.read.map.txt)
 
 test-transcriptome-trust-ends: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --trust_ends
@@ -599,11 +589,11 @@ test-alleles: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
 	$(call cmp_expect,$@.allelegroups.counts.tsv)
 
 test-isoalleles: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
-	flair isoalleles --bam ${TEST_ALIGN_BAM} --vcf ${ALIGN_LONGSHOT} -g ${GENOME_FA}  --isoform_bed $E/test-transcriptome.isoforms.bed --read_map $E/test-transcriptome.isoform.read.map.txt -o $O/$@ --generate_map --annotate_bams
+	flair isoalleles --bam ${TEST_ALIGN_BAM} --vcf ${ALIGN_LONGSHOT} -g ${GENOME_FA}  --isoform_bed $(TOME_ISOFORM_BED) --read_map $(TOME_READ_MAP) -o $O/$@ --generate_map --annotate_bams
 	$(call cmp_expect,$@.isoforms.allelegroups.bed)
 
 test-variantquant: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
-	flair variantquant -i ${TEST_ALIGN_BAM} --vcf ${ALIGN_LONGSHOT} -b $E/test-transcriptome.isoforms.bed -o $O/$@
+	flair variantquant -i ${TEST_ALIGN_BAM} --vcf ${ALIGN_LONGSHOT} -b $(TOME_ISOFORM_BED) -o $O/$@
 	$(call cmp_expect_sort,$@.var.counts.tsv)
 
 
@@ -661,10 +651,10 @@ ${ERGIC3_KRAS_SIM_FA_GZ}: $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq
 spliceevents-tests: test-spliceevents test-spliceevents-extraannot
 
 test-spliceevents: mkdirs ${TEST_ALIGN_BAM}
-	python3 ../src/flair/flair_spliceevents.py -m $I/spliceevents.manifest.tsv -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@
+	python3 ../src/flair/flair_spliceevents.py -m $(SPLICEEVENTS_MANIFEST) -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@
 
 test-spliceevents-extraannot: mkdirs ${TEST_ALIGN_BAM}
-	python3 ../src/flair/flair_spliceevents.py -m $I/spliceevents.manifest.tsv -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) --annot_basic $(BASIC_ANNOTATION) -o $O/$@
+	python3 ../src/flair/flair_spliceevents.py -m $(SPLICEEVENTS_MANIFEST) -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) --annot_basic $(BASIC_ANNOTATION) -o $O/$@
 
 # FIXME: orphan, this does not work and is not referenced; is this still needed
 # the annotation file is there
@@ -720,15 +710,15 @@ ${GENOME_FA}:
 	rm chr12.fa.gz chr17.fa.gz chr20.fa.gz
 	samtools faidx $@
 
-${BASIC_ISOFORMS_OUT_FA}: ${BASIC_ISOFORMS_FA}
-	mkdir -p $(dir $@)
-	cp -f $< $@
+# ${BASIC_ISOFORMS_OUT_FA}: ${BASIC_ISOFORMS_FA}
+# 	mkdir -p $(dir $@)
+# 	cp -f $< $@
 
-${BASIC_ISOFORMS_OUT_FAI}: ${BASIC_ISOFORMS_OUT_FA}
-	samtools faidx --output $@ $<
+# ${BASIC_ISOFORMS_OUT_FAI}: ${BASIC_ISOFORMS_OUT_FA}
+# 	samtools faidx --output $@ $<
 
 ${TOME_OUT_FA}:
-	cp $E/test-transcriptome.isoforms.bed $@
+	cp $E/test-transcriptome.isoforms.fa $@
 
 ${TOME_OUT_FAI}: ${TOME_OUT_FA}
 	samtools faidx --output $@ $<
