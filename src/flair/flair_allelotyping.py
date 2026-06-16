@@ -2,9 +2,11 @@
 
 import argparse
 import pysam
-from gtf_io import load_gtf_to_gene_data
+from gtf_io import load_gtf_to_gene_data, GtfExon
 from copy import deepcopy
 import graphviz
+from flair.pycbio.hgdata.bed import BedReader
+from flair.flair_bed import FlairBed
 import flair.variant_processing as vp
 
 
@@ -22,9 +24,10 @@ def parse_args():
                         help="output prefix. default: 'flair'")
     parser.add_argument('-g', '--genome',
                         type=str, required=True, help='FastA of reference genome')
-    parser.add_argument('-f', '--gtf',
-                        type=str, required=True,
-                        help='GTF annotation file')
+    parser.add_argument('-f', '--gtf', type=str,
+                        help='GTF annotation file, either this or isoform_bed must be provided')
+    parser.add_argument('--isoform_bed', type=str,
+                        help="FLAIR isoform bed file, can be used as primary or supplementary annotation")
     parser.add_argument('--frac_support', default=0.05, type=float,
                         help='fraction of reads required to call allele, not recommended to change from default')
     parser.add_argument('--read_support', default=3, type=int,
@@ -36,6 +39,8 @@ def parse_args():
     # parser.add_argument('--keep_intermediate', default=False, action='store_true',
     #                     help='''specify if intermediate and temporary files are to be kept for debugging.''')
     args = parser.parse_args()
+    if args.gtf is None and args.isoform_bed is None:
+        parser.error(f'At least one of gtf and isoform_bed must be provided')
     return args
 
 def make_vizgraph(graph, readvarinfo_to_reads):
@@ -75,6 +80,34 @@ def load_bam_files_for_region(bam, norm_bam, gene_chrom, gene_start, gene_end, m
         load_bam_file_for_region(norm_bam, 'n', gene_chrom, gene_start, gene_end, my_vars, genome, gene_juncs, readvarinfo_to_reads)
     return readvarinfo_to_reads
 
+def load_isoform_bed_data(gtf, isoform_bed, gene_to_all_exons, gene_to_all_juncs):
+    for bed in BedReader(isoform_bed, bedClass=FlairBed):
+        if bed.transcript_class != 'fusion':
+            gene = None
+            if gtf is None or len(bed.ref_gene_mappings) == 0:
+                gene = bed.gene_id
+            elif len(bed.ref_gene_mappings) == 1:
+                gene = bed.ref_gene_mappings[0]
+            if gene is not None:
+                if gene not in gene_to_all_exons:
+                    gene_to_all_exons[gene] = set()
+                    gene_to_all_juncs[gene] = set()
+                for exon in bed.blocks:
+                    gene_to_all_exons[gene].add(GtfExon(bed.chrom, None, 'exon', exon.start, exon.end, None, bed.strand, None))
+                for i in range(len(bed.blocks) - 1):
+                    gene_to_all_juncs[gene].add((bed.blocks[i].end, bed.blocks[i + 1].start))
+
+def load_isoform_data(gtf, isoform_bed):
+    gene_to_all_exons, gene_to_all_juncs = {}, {}
+    if gtf is not None:
+        gene_to_all_exons, gene_to_all_juncs = load_gtf_to_gene_data(gtf)
+    if isoform_bed is not None:
+        load_isoform_bed_data(gtf, isoform_bed, gene_to_all_exons, gene_to_all_juncs)
+    for gene in gene_to_all_exons:
+        gene_to_all_exons[gene] = sorted(list(gene_to_all_exons[gene]), key=lambda x: (x.start, x.end))
+        gene_to_all_juncs[gene] = sorted(list(gene_to_all_juncs[gene]))
+    return gene_to_all_exons, gene_to_all_juncs
+
 def getvariants():
     args = parse_args()
     print('loading genes and variants')
@@ -82,7 +115,8 @@ def getvariants():
     my_vcfs = [args.vcf, args.norm_vcf] if args.norm_vcf is not None else [args.vcf]
     vartoalt = vp.combine_vcf_files(my_vcfs)
     chrom_to_region_to_vars = vp.reorganize_vars(vartoalt)
-    gene_to_all_exons, gene_to_all_juncs = load_gtf_to_gene_data(args.gtf)
+    gene_to_all_exons, gene_to_all_juncs = load_isoform_data(args.gtf, args.isoform_bed)
+
     gene_to_vars = vp.get_gene_to_all_vars(gene_to_all_exons, chrom_to_region_to_vars)
     # tempdir = make_temp_dir(args.output)
 

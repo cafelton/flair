@@ -489,8 +489,6 @@ def load_gtf_to_gene_data(gtf_file):
             exons.sort(key=lambda x: (x.start, x.end))
             for i in range(len(exons) - 1):
                 gene_to_juncs[gene].add((exons[i].end, exons[i + 1].start))
-        gene_to_exons[gene] = sorted(list(gene_to_exons[gene]), key=lambda x: (x.start, x.end))
-        gene_to_juncs[gene] = sorted(list(gene_to_juncs[gene]))
     return gene_to_exons, gene_to_juncs
 
 
