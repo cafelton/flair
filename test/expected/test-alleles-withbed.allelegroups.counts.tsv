@@ -1,4 +1,4 @@
-#phase_set	allele_group	gene	tumor
+#phase_set	allele_group	gene	tumor_counts
 1	A	ENSG00000133703.12	80
 1	B	ENSG00000133703.12	70
 2	A	ENSG00000108654.15	369

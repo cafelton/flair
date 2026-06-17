@@ -579,7 +579,7 @@ ${ALIGN_LONGSHOT}: ${GENOME_FA} ${TEST_ALIGN_BAM}
 	longshot --force_overwrite --bam ${TEST_ALIGN_BAM} --ref ${GENOME_FA} --out ${ALIGN_LONGSHOT} --min_cov 3 --min_alt_count 3 --strand_bias_pvalue_cutoff 0.000001
 
 
-variants-tests:  test-alleles test-isoalleles test-variantquant
+variants-tests:  test-alleles test-alleles-withbed test-alleles-bedonly test-isoalleles test-variantquant
 
 # longshot is not currently include in the docker container
 have_longshot := $(shell which longshot >/dev/null 2>&1 && echo yes || echo no)
@@ -591,14 +591,23 @@ test-alleles: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
 test-alleles-withbed: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
 	flair alleles --bam ${TEST_ALIGN_BAM} --vcf ${ALIGN_LONGSHOT} -g ${GENOME_FA} --isoform_bed $(TOME_ISOFORM_BED) -f $(BASIC_ANNOTATION) -o $O/$@ --generate_map --annotate_bams
 	$(call cmp_expect,$@.allelegroups.counts.tsv)
+	$(call cmp_expect,$@.allelegroups.vcf)
+	$(call cmp_expect,$@.allelegroups.tumor.read.map.txt)
 
 test-alleles-bedonly: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
 	flair alleles --bam ${TEST_ALIGN_BAM} --vcf ${ALIGN_LONGSHOT} -g ${GENOME_FA} --isoform_bed $(TOME_ISOFORM_BED) -o $O/$@ --generate_map --annotate_bams
 	$(call cmp_expect,$@.allelegroups.counts.tsv)
 
+# test-isoalleles: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
+# 	flair isoalleles --bam ${TEST_ALIGN_BAM} --vcf ${ALIGN_LONGSHOT} -g ${GENOME_FA}  --isoform_bed $(TOME_ISOFORM_BED) --read_map $(TOME_READ_MAP) -o $O/$@ --generate_map --annotate_bams
+# 	$(call cmp_expect,$@.isoforms.allelegroups.bed)
+
 test-isoalleles: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
-	flair isoalleles --bam ${TEST_ALIGN_BAM} --vcf ${ALIGN_LONGSHOT} -g ${GENOME_FA}  --isoform_bed $(TOME_ISOFORM_BED) --read_map $(TOME_READ_MAP) -o $O/$@ --generate_map --annotate_bams
-	$(call cmp_expect,$@.isoforms.allelegroups.bed)
+	flair isoalleles --allele_vcf $E/test-alleles-withbed.allelegroups.vcf --allele_read_map $E/test-alleles-withbed.allelegroups.tumor.read.map.txt --genome ${GENOME_FA} \
+	                 --isoform_bed $(TOME_ISOFORM_BED) --iso_read_map $(TOME_READ_MAP) -o $O/$@ --bam ${TEST_ALIGN_BAM} --generate_map
+	$(call cmp_expect,$@.isoalleles.bed)
+	$(call cmp_expect,$@.isoallele.counts.tsv)
+
 
 test-variantquant: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM} ${ALIGN_LONGSHOT}
 	flair variantquant -i ${TEST_ALIGN_BAM} --vcf ${ALIGN_LONGSHOT} -b $(TOME_ISOFORM_BED) -o $O/$@

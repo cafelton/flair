@@ -153,6 +153,7 @@ def make_big_bed(genome, chrom_sizes_file_name, output_prefix):
         for chrom in genome.references:
             fh.write(chrom + '\t' + str(genome.get_reference_length(chrom)) + '\n')
     pipettor.run([('bedToBigBed', f'-as={osp.dirname(__file__)}/flair_bed.as', '-type=bed12+', f'{output_prefix}.bed', chrom_sizes_file_name, f'{output_prefix}.bb', '-sort', '-tab')])
+    pipettor.run([('rm', chrom_sizes_file_name)])
 
 def write_as_file(fields, filename, tablename, description):
     with open(filename, 'w') as as_fh:

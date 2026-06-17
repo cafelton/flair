@@ -1,4 +1,4 @@
-#phase_set	allele_group	gene	tumor
+#phase_set	allele_group	gene	tumor_counts
 1	A	FLG00000001	80
 1	B	FLG00000001	70
 2	A	FLG00000002	369
