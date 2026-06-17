@@ -476,6 +476,11 @@ test-transcriptome: mkdirs ${TEST_ALIGN_BAM}
 	$(call cmp_expect,$@.isoforms.fa)
 	$(call cmp_expect,$@.isoform.read.map.txt)
 
+test-transcriptome-normends: mkdirs ${TEST_ALIGN_BAM}
+	flair transcriptome -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --keep_intermediate --generate_map --normalize_ends
+# 	$(call cmp_expect_bed_simple,$@.isoforms.bed)
+	$(diff_bed_gtf)
+
 test-transcriptome-trust-ends: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --sample_name $@ --trust_ends
 # 	$(call cmp_expect_bed_simple,$@.isoforms.bed)

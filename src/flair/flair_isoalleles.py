@@ -418,7 +418,7 @@ def getvariants():
                 if args.iso_read_map_norm is not None:
                     fh_map_norm.close()
 
-        make_big_bed(genome, args.output + '.chrom.sizes', args.output + '.isoallele')
+        make_big_bed(genome, args.output + '.chrom.sizes', args.output + '.isoalleles')
     write_aaseq_key(args.output, aaseq_to_id)
     if args.bam is not None:
         print('labeling bam files')

@@ -25,6 +25,7 @@ from flair.predictProductivity import predict_prod_temp
 from flair.flair_bed import FlairBed
 
 MIN_POLYA_FRAC_DIFF_FOR_SE_STRANDING = 0.1
+NORM_END_EXTRA_LEN = 100
 
 # FIXME: add object for all file names
 # FIXME: use real TSVs
@@ -124,6 +125,8 @@ def get_args():
                         Intermediate files include: promoter-supported reads file,
                         read assignments to firstpass isoforms''')
 
+    parser.add_argument('--normalize_ends', default=False, action='store_true',
+                        help='''specify if you want to normalize transcript ends with similar terminal splice sites - only recommended if max_ends is 1''')
     parser.add_argument('--generate_map', default=False, action='store_true',
                         help='''specify this argument to generate a txt file of read-isoform assignments''')
     parser.add_argument('--output_bam', default=False, action='store_true',
@@ -408,10 +411,19 @@ class GeneMaxTerminalExonsEnds:
             self.right_ends[exon.start] = max(self.right_ends[exon.start], exon.end)
 
     def get_left_end(self, exon):
-        return self.left_ends[exon.end]
+        # search all splice sites += 50bp from this edge splice site
+        ends = []
+        for i in range(exon.end - 50, exon.end + 50):
+            if i in self.left_ends:
+                ends.append(self.left_ends[i])
+        return min(ends)
 
     def get_right_end(self, exon):
-        return self.right_ends[exon.start]
+        ends = []
+        for i in range(exon.start - 50, exon.start + 50):
+            if i in self.right_ends:
+                ends.append(self.right_ends[i])
+        return max(ends)
 
 class MaxTerminalExonsEnds:
     """Collection of maximal terminal exons ends by gene.
@@ -477,17 +489,17 @@ def max_terminal_exons_ends_from_iso_infos(iso_to_info):
 ####
 # transcriptome reference
 ####
-def normalize_gene_terminal_exons(max_terminal_exons_ends, gene_id, strand, exons,
-                                  *, add_length_at_ends=0):
+def normalize_gene_terminal_exons(max_terminal_exons_ends, gene_id, strand, exons):
     "updates terminal exons ends"
     gene_terminal_exons = max_terminal_exons_ends.fetch(gene_id, strand)
-    exons[0] = Exon(gene_terminal_exons.get_left_end(exons[0]) - add_length_at_ends,
+    exons[0] = Exon(gene_terminal_exons.get_left_end(exons[0]) - NORM_END_EXTRA_LEN,
                     exons[0].end)
     exons[-1] = Exon(exons[-1].start,
-                     gene_terminal_exons.get_right_end(exons[-1]) + add_length_at_ends)
+                     gene_terminal_exons.get_right_end(exons[-1]) + NORM_END_EXTRA_LEN)
+    return exons
 
 def generate_transcriptome_reference_transcript(strand, transcript_to_strand, transcript_id, gene_id, annots, normalize_ends, max_terminal_exons_ends,
-                                                add_length_at_ends, transcript_to_new_exons, chrom, genome, annot_bed_fh, annot_fa_fh, annot_uniqueseq_fh):
+                                                transcript_to_new_exons, chrom, genome, annot_bed_fh, annot_fa_fh, annot_uniqueseq_fh):
     transcript_to_strand[(transcript_id, gene_id)] = strand
     exons = list(annots.transcript_to_exons[(transcript_id, gene_id)])
     assert isinstance(exons[0], Exon)  # FIXME tmp debugging
@@ -495,9 +507,8 @@ def generate_transcriptome_reference_transcript(strand, transcript_to_strand, tr
     is_not_subset, unique_seq = filter_spliced_iso('nosubset', 0, juncs, exons, (transcript_id, gene_id),
                                                    0, annots, None, None, None, strand)
     if is_not_subset:
-        if normalize_ends:
-            normalize_gene_terminal_exons(max_terminal_exons_ends, gene_id, strand, exons,
-                                          add_length_at_ends=add_length_at_ends)
+        if normalize_ends and len(exons) > 1:
+            normalize_gene_terminal_exons(max_terminal_exons_ends, gene_id, strand, exons)
             transcript_to_new_exons[(transcript_id, gene_id)] = tuple(exons)
         exons = tuple(exons)
         start, end = exons[0].start, exons[-1].end
@@ -514,7 +525,7 @@ def generate_transcriptome_reference_transcript(strand, transcript_to_strand, tr
         if len(unique_seq) > 0:
             annot_uniqueseq_fh.write(transcript_id + '_' + gene_id + '\t' + ','.join(unique_seq) + '\n')
 
-def generate_transcriptome_reference_guts(normalize_ends, annots, add_length_at_ends, chrom, genome, annot_bed_fh, annot_fa_fh, annot_uniqueseq_fh):
+def generate_transcriptome_reference_guts(normalize_ends, annots, chrom, genome, annot_bed_fh, annot_fa_fh, annot_uniqueseq_fh):
     transcript_to_strand = {}
     transcript_to_new_exons = {}
     max_terminal_exons_ends = None
@@ -522,16 +533,15 @@ def generate_transcriptome_reference_guts(normalize_ends, annots, add_length_at_
         max_terminal_exons_ends = max_terminal_exons_ends_from_annots(annots)
 
     for transcript_id, gene_id, strand in annots.transcripts:
-        generate_transcriptome_reference_transcript(strand, transcript_to_strand, transcript_id, gene_id, annots, normalize_ends, max_terminal_exons_ends, add_length_at_ends,
+        generate_transcriptome_reference_transcript(strand, transcript_to_strand, transcript_id, gene_id, annots, normalize_ends, max_terminal_exons_ends,
                                                     transcript_to_new_exons, chrom, genome, annot_bed_fh, annot_fa_fh, annot_uniqueseq_fh)
     return transcript_to_strand, transcript_to_new_exons
 
-def generate_transcriptome_reference(temp_prefix, annots, chrom, genome,
-                                     normalize_ends=False, add_length_at_ends=0):
+def generate_transcriptome_reference(temp_prefix, annots, chrom, genome, normalize_ends=False):
     with (open(temp_prefix + '.annotated_transcripts.bed', 'w') as annot_bed_fh,
           open(temp_prefix + '.annotated_transcripts.fa', 'w') as annot_fa_fh,
           open(temp_prefix + '.annotated_transcripts_uniquebound.txt', 'w') as annot_uniqueseq_fh):
-        return generate_transcriptome_reference_guts(normalize_ends, annots, add_length_at_ends, chrom, genome, annot_bed_fh, annot_fa_fh, annot_uniqueseq_fh)
+        return generate_transcriptome_reference_guts(normalize_ends, annots, chrom, genome, annot_bed_fh, annot_fa_fh, annot_uniqueseq_fh)
 
 
 def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
@@ -542,7 +552,7 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
         # logging.info('generating transcriptome reference')
         # this part generates the fasta file for the annotation
         transcript_to_strand, transcript_to_new_exons = \
-            generate_transcriptome_reference(temp_prefix, annots, chrom, genome)
+            generate_transcriptome_reference(temp_prefix, annots, chrom, genome, normalize_ends=args.normalize_ends)
         # FIXME: make a TSV
         clipping_file = temp_prefix + '.reads.genomicclipping.txt'
         transcriptome_align_and_count(args, temp_prefix + '.reads.fasta',
@@ -588,15 +598,17 @@ def filter_ends_single_best(isoforms):
         best.reads.extend(iso.reads)
     return [best]
 
-def filter_ends_by_redundant_and_support(isoforms, sjc_support, se_support, max_ends):
+def filter_ends_by_redundant_and_support(isoforms, sjc_support, se_support, max_ends, normalize_ends):
     """Sort ends, then select best ones based on support and max_ends"""
-    # First by weighted score, then by length
     if isoforms[0].juncs == ():
         support = se_support
-        isoforms.sort(key=lambda x: [x.num_reads * x.genomic_length], reverse=True)
     else:
         support = sjc_support
-        isoforms.sort(key=lambda x: [x.num_reads, x.genomic_length], reverse=True)
+
+    if normalize_ends:  # Only by longest length
+        isoforms.sort(key=lambda x: x.genomic_length, reverse=True)
+    else:  # First by read support, then by length
+        isoforms.sort(key=lambda x: [x.num_reads * x.genomic_length], reverse=True)
 
     junc_support = sum([x.num_reads for x in isoforms])
     if junc_support < support:
@@ -642,7 +654,7 @@ class CandidateIsoforms:
 def _filter_isos_by_redundant_and_support(args, isoforms, candidates, iso_fh):
     # this assumes single exons are pre-grouped by overlap
     # previously treated single exons separately due to them being in larger groups
-    filtered_isoforms = filter_ends_by_redundant_and_support(isoforms, args.sjc_support, args.se_support, args.max_ends)
+    filtered_isoforms = filter_ends_by_redundant_and_support(isoforms, args.sjc_support, args.se_support, args.max_ends, args.normalize_ends)
     for isoform in filtered_isoforms:
         candidates.add(isoform)
         convert_to_bed12(isoform).write(iso_fh)
@@ -1033,12 +1045,11 @@ def generate_non_gene_iso_groups_strand(genes, novel_gene_isos_to_group, strand,
     if len(curr_group) > 0:
         _assign_novel_gene_group(genes, chrom, strand, group_start, last_end, curr_group, firstpass)
 
-def write_first_pass_isoforms(iso_name, normalize_ends, isoform, max_terminal_exons_ends, add_length_at_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome):
+def write_first_pass_isoforms(iso_name, normalize_ends, isoform, max_terminal_exons_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome):
     # FIXME: do normalization outside of write function
     if normalize_ends and len(isoform.exons) > 1:  # don't normalize ends for single exon transcripts
-        normalize_gene_terminal_exons(max_terminal_exons_ends, isoform.gene_id, isoform.strand, isoform.exons,
-                                      add_length_at_ends=add_length_at_ends)
-        isoform.reset_from_exons(isoform.exons)
+        exons = normalize_gene_terminal_exons(max_terminal_exons_ends, isoform.gene_id, isoform.strand, isoform.exons)
+        isoform.reset_from_exons(exons)
     # if isoform.transcript_id is None:
     #     isoform.transcript_id = isoform.name
     # isoform.name = isoform.transcript_id + '_' + isoform.gene_id
@@ -1051,7 +1062,7 @@ def write_first_pass_isoforms(iso_name, normalize_ends, isoform, max_terminal_ex
     seq_fh.write(isoform.get_sequence(genome) + '\n')
 
 def write_firstpass(temp_prefix, chrom, firstpass, annots, genome, *,
-                    normalize_ends=False, add_length_at_ends=0, unique_bound=None):
+                    normalize_ends=False, unique_bound=None):
 
     # generating standardized set of ends for gene
     if normalize_ends:
@@ -1067,7 +1078,7 @@ def write_firstpass(temp_prefix, chrom, firstpass, annots, genome, *,
           open(temp_prefix + '.firstpass.uniquebound.txt', 'w') as unique_fh):
         for iso_name in firstpass:
             write_first_pass_isoforms(iso_name, normalize_ends, firstpass[iso_name], max_terminal_exons_ends,
-                                      add_length_at_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome)
+                                      unique_bound, unique_fh, iso_fh, seq_fh, genome)
 
 
 ####
@@ -1152,111 +1163,129 @@ def calc_final_iso_support(read_ends_file, final_transcript_objs, trust_ends):
     return iso_to_counts, gene_to_tot
 
 def write_final_isoform_output(partition, args, final_transcript_objs, iso_to_counts, gene_to_tot, annots, genome):
-    with open(partition.output_path('isoform.counts.txt'), 'w') as fh:
-        for transcript in iso_to_counts:
-            fh.write(f'{transcript}\t{iso_to_counts[transcript][0]}\t{iso_to_counts[transcript][1]}\n')
+    transcript_to_reads = {}
+    for line in open(partition.output_path('countsam.read.map.txt')):
+        iso, reads = line.split('\t', 1)
+        transcript_to_reads[iso] = reads
+
     with open(partition.output_path('isoforms.bed'), 'w') as iso_fh, \
-         open(partition.output_path('isoforms.fa'), 'w') as seq_fh:
+         open(partition.output_path('isoforms.fa'), 'w') as seq_fh, \
+         open(partition.output_path('isoform.counts.txt'), 'w') as counts_fh, \
+         open(partition.output_path('isoform.read.map.txt'), 'w') as map_fh:
         for tname in final_transcript_objs:
             # spliced isos checked against spliced total, single exon checked against full-length total
-            passes_support, my_frac_support = _iso_passes_support_filter(args, tname, final_transcript_objs[tname].gene_id, len(final_transcript_objs[tname].exons), iso_to_counts, gene_to_tot)
+            isoform = final_transcript_objs[tname]
+            passes_support, my_frac_support = _iso_passes_support_filter(args, tname, isoform.gene_id, len(isoform.exons), iso_to_counts, gene_to_tot)
             if passes_support:
-                thickStart, thickEnd, productivity, aaseq = predict_prod_temp(final_transcript_objs[tname], annots.start_codon_count,
+                if args.normalize_ends and len(isoform.exons) > 1:
+                    # removing additional length from ends
+                    # not entirely sure why I need to reset the exons outside of the isoform object, but it doesn't work otherwise
+                    exons = isoform.exons
+                    exons[0] = Exon(exons[0].start + NORM_END_EXTRA_LEN, exons[0].end)
+                    exons[-1] = Exon(exons[-1].start, exons[-1].end - NORM_END_EXTRA_LEN)
+                    isoform.reset_from_exons(exons)
+
+                thickStart, thickEnd, productivity, aaseq = predict_prod_temp(isoform, annots.start_codon_count,
                                                                               annots.gene_to_cds_starts, annots.transcript_to_nmd_except, genome)
-                convert_to_flair_bed(final_transcript_objs[tname], thickStart=thickStart, thickEnd=thickEnd, read_support=iso_to_counts[tname][0],
+                convert_to_flair_bed(isoform, thickStart=thickStart, thickEnd=thickEnd, read_support=iso_to_counts[tname][0],
                                      frac_support=my_frac_support, productivity=productivity, samples=(args.sample_name,), aaseq_id=aaseq).write(iso_fh)
-                seq_fh.write('>' + final_transcript_objs[tname].name + '\n')
-                seq_fh.write(final_transcript_objs[tname].get_sequence(genome) + '\n')
+                seq_fh.write('>' + isoform.name + '\n')
+                seq_fh.write(isoform.get_sequence(genome) + '\n')
+                counts_fh.write(f'{isoform.name}\t{iso_to_counts[tname][0]}\t{iso_to_counts[tname][1]}\n')
+                map_fh.write(f'{isoform.name}\t{transcript_to_reads[tname]}')
 
 
 def _run_region(*, partition, gtf_data, junction_corrector, args):
     region = partition.region
-    # FIXME confusing name if taking gtf_data,
-    # FIXME: should only have region, so why take region arg
-    annots = annot_data_from_gtf(gtf_data, region)
 
     # first extract reads for region as fasta
     pipettor.run([('samtools', 'view', '-h', args.genome_aligned_bam, region.name + ':' + str(region.start) + '-' + str(region.end)),
                   ('samtools', 'fasta', '-')],
                  stdout=partition.output_path('reads.fasta'))
+    if os.path.getsize(partition.output_path('reads.fasta')) > 0:
+        # FIXME confusing name if taking gtf_data,
+        # FIXME: should only have region, so why take region arg
+        annots = annot_data_from_gtf(gtf_data, region)
 
-    # then align reads to transcriptome and run count_sam_transcripts
-    genome = pysam.FastaFile(args.genome)
-    bam_file = pysam.AlignmentFile(args.genome_aligned_bam, 'rb')
+        # then align reads to transcriptome and run count_sam_transcripts
+        genome = pysam.FastaFile(args.genome)
+        bam_file = pysam.AlignmentFile(args.genome_aligned_bam, 'rb')
 
-    # genomic clipping: amount of clipping (from cigar) at ends of reads when aligned to genome
-    # generates file with [read{\t}clipping amount] on each line
-    # For comparing with amount of clipping after alignment to transcriptome
-    # in order to check whether transcriptome alignment is comparable to or better than genomic alignment,
-    # which can be considered to support isoform.
+        # genomic clipping: amount of clipping (from cigar) at ends of reads when aligned to genome
+        # generates file with [read{\t}clipping amount] on each line
+        # For comparing with amount of clipping after alignment to transcriptome
+        # in order to check whether transcriptome alignment is comparable to or better than genomic alignment,
+        # which can be considered to support isoform.
 
-    # logging.info('generating genomic clipping reference')
-    num_reads, clipping_file = generate_genomic_alignment_read_to_clipping_file(partition.file_prefix, bam_file, region.name, region.start, region.end)
+        # logging.info('generating genomic clipping reference')
+        num_reads, clipping_file = generate_genomic_alignment_read_to_clipping_file(partition.file_prefix, bam_file, region.name, region.start, region.end)
 
-    if num_reads == 0:
-        generate_full_set_empty_intermediate_files(partition.file_prefix, args.generate_map)
-        return
+        if num_reads == 0:
+            generate_full_set_empty_intermediate_files(partition.file_prefix, args.generate_map)
+            return
 
-    # aligning to reference transcriptome, then identifying reads that match well to reference transcripts
-    # with filter_transcriptome_align
-    # logging.info('identifying good match to annot')
-    if not args.no_align_to_annot:
-        logging.info('aligning to transcriptome reference')
-    read_to_annot_transcript = identify_good_match_to_annot(args, partition.file_prefix, region.name, annots, genome)
+        # aligning to reference transcriptome, then identifying reads that match well to reference transcripts
+        # with filter_transcriptome_align
+        # logging.info('identifying good match to annot')
+        if not args.no_align_to_annot:
+            logging.info('aligning to transcriptome reference')
+        read_to_annot_transcript = identify_good_match_to_annot(args, partition.file_prefix, region.name, annots, genome)
 
-    logging.info('correcting and grouping reads, filtering isoforms')
+        logging.info('correcting and grouping reads, filtering isoforms')
 
-    # takes in bam file, for each read attempts to correct splice junctions (removes unsupported ones), then groups reads by junction chains
-    # this also handles read strandedness if necessary
-    sj_to_ends = {}
-    filter_correct_group_reads(bam_file=bam_file, region=region,
-                               read_to_annot_transcript=read_to_annot_transcript,
-                               annots=annots, junction_corrector=junction_corrector,
-                               genome=genome,
-                               quality=args.quality, keep_sup=args.keep_sup,
-                               sj_to_ends=sj_to_ends)
-    bam_file.close()
+        # takes in bam file, for each read attempts to correct splice junctions (removes unsupported ones), then groups reads by junction chains
+        # this also handles read strandedness if necessary
+        sj_to_ends = {}
+        filter_correct_group_reads(bam_file=bam_file, region=region,
+                                   read_to_annot_transcript=read_to_annot_transcript,
+                                   annots=annots, junction_corrector=junction_corrector,
+                                   genome=genome,
+                                   quality=args.quality, keep_sup=args.keep_sup,
+                                   sj_to_ends=sj_to_ends)
+        bam_file.close()
 
-    # for each junction chain, clusters ends - generates junction chain x ends
-    # firstpass objects then does initial filtering by read support and
-    # redundant ends also separates single exon isoforms from spliced isoforms
-    # (because they're handled differently in future step for identifying
-    # annotated gene/isoform names)
-    candidates = process_juncs_to_firstpass_isos(args, partition.file_prefix, sj_to_ends, annots, region.name)
+        # for each junction chain, clusters ends - generates junction chain x ends
+        # firstpass objects then does initial filtering by read support and
+        # redundant ends also separates single exon isoforms from spliced isoforms
+        # (because they're handled differently in future step for identifying
+        # annotated gene/isoform names)
+        candidates = process_juncs_to_firstpass_isos(args, partition.file_prefix, sj_to_ends, annots, region.name)
 
-    # filter isoforms: remove subsets, generate unique boundary sequences
-    firstpass, iso_to_unique_bound = filter_firstpass_isos(args, candidates, annots, {})
+        # filter isoforms: remove subsets, generate unique boundary sequences
+        firstpass, iso_to_unique_bound = filter_firstpass_isos(args, candidates, annots, {})
 
-    if len(firstpass.keys()) > 0:
-        # logging.info('getting gene names and writing firstpass')
-        # this section identifies annotated gene and isoform names (primarily based on splice junction matching, secondarily by exon overlap)
-        # also adjusts isoform strand, determines novel isoform and gene names
-        # also normalizes transcript ends (temporarily extends ends so that transcript end alignment does not drive transcript assignment during transcriptome alignment)
-        # writes out bed and fa files
-        logging.info('realigning to firstpass and getting final isoforms')
-        write_firstpass(partition.file_prefix, region.name, firstpass, annots, genome, unique_bound=iso_to_unique_bound)
+        if len(firstpass.keys()) > 0:
+            # logging.info('getting gene names and writing firstpass')
+            # this section identifies annotated gene and isoform names (primarily based on splice junction matching, secondarily by exon overlap)
+            # also adjusts isoform strand, determines novel isoform and gene names
+            # also normalizes transcript ends (temporarily extends ends so that transcript end alignment does not drive transcript assignment during transcriptome alignment)
+            # writes out bed and fa files
+            logging.info('realigning to firstpass and getting final isoforms')
+            write_firstpass(partition.file_prefix, region.name, firstpass, annots, genome, unique_bound=iso_to_unique_bound, normalize_ends=args.normalize_ends)
 
-        # aligns to firstpass transcriptome, identifies best read -> isoform alignment for each read, then gets read counts per isoform
-        read_map_file = partition.output_path('isoform.read.map.txt') if args.generate_map else None
-        transcriptome_align_and_count(args, partition.output_path('reads.fasta'),
-                                      partition.output_path('firstpass.fa'),
-                                      partition.output_path('firstpass.bed'),
-                                      partition.output_path('isoform.counts.txt'),
-                                      read_map_file, False,  # say is not annot, requires stringent, returns different end values
-                                      partition.output_path('reads.genomicclipping.txt'),
-                                      partition.output_path('firstpass.uniquebound.txt'))
+            # aligns to firstpass transcriptome, identifies best read -> isoform alignment for each read, then gets read counts per isoform
+            read_map_file = partition.output_path('countsam.read.map.txt') if args.generate_map else None
+            transcriptome_align_and_count(args, partition.output_path('reads.fasta'),
+                                          partition.output_path('firstpass.fa'),
+                                          partition.output_path('firstpass.bed'),
+                                          partition.output_path('isoform.counts.txt'),
+                                          read_map_file, False,  # say is not annot, requires stringent, returns different end values
+                                          partition.output_path('reads.genomicclipping.txt'),
+                                          partition.output_path('firstpass.uniquebound.txt'))
+        else:
+            logging.info('no firstpass isoforms found')
+            generate_empty_intermediate_files(partition.file_prefix, ['.firstpass.fa', '.firstpass.bed', '.isoform.counts.txt', '.isoform.read.map.txt', '.isoform.ends.tsv'])
+
+        # FIXME this is messy, shouldn't have to reorganize like this
+        final_transcript_objs = {}
+        for og_key in firstpass:
+            final_transcript_objs[firstpass[og_key].name] = firstpass[og_key]
+
+        iso_to_counts, gene_to_tot = calc_final_iso_support(partition.output_path('isoform.ends.tsv'), final_transcript_objs, args.trust_ends)
+        write_final_isoform_output(partition, args, final_transcript_objs, iso_to_counts, gene_to_tot, annots, genome)
+        genome.close()
     else:
-        logging.info('no firstpass isoforms found')
-        generate_empty_intermediate_files(partition.file_prefix, ['.firstpass.fa', '.firstpass.bed', '.isoform.counts.txt', '.isoform.read.map.txt', '.isoform.ends.tsv'])
-
-    # FIXME this is messy, shouldn't have to reorganize like this
-    final_transcript_objs = {}
-    for og_key in firstpass:
-        final_transcript_objs[firstpass[og_key].name] = firstpass[og_key]
-
-    iso_to_counts, gene_to_tot = calc_final_iso_support(partition.output_path('isoform.ends.tsv'), final_transcript_objs, args.trust_ends)
-    write_final_isoform_output(partition, args, final_transcript_objs, iso_to_counts, gene_to_tot, annots, genome)
-    genome.close()
+        generate_empty_intermediate_files(partition.file_prefix, ['.firstpass.bed', '.isoform.counts.txt', '.isoform.read.map.txt', '.isoforms.bed', '.isoforms.fa', '.firstpass.reallyunfiltered.bed', '.firstpass.unfiltered.bed'])
 
 def combine_chunks(args, output, partitions):
     files_to_combine = ['.isoforms.bed', '.isoforms.fa', '.isoform.counts.txt']
@@ -1339,6 +1368,7 @@ def flair_transcriptome():
     logging.info('loading genome')
     genome = pysam.FastaFile(args.genome)
 
+    # temp_dir = f'{args.output}.intermediate/'
     temp_dir = make_temp_dir(args.output)
 
     annot_gtf_data = None

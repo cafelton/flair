@@ -161,10 +161,11 @@ def check_exonenddist(blocksize, read_edge, transcript_edge, trust_ends, disttob
     if trust_ends:
         return abs(transcript_edge - read_edge) <= TRUST_ENDS_WINDOW
     elif unique_bound:
+        # NOTE: I originally had this so that read ends needed to be closer to the end of the transcript than the exon edge, but found that was too stringent, especially after normalizing ends
         if transcript_edge < unique_bound:  # left end of transcript
-            return unique_bound - read_edge >= REQ_BP_ALIGNED_IN_EDGE_EXONS and disttoblock > abs(transcript_edge - read_edge)
+            return unique_bound - read_edge >= REQ_BP_ALIGNED_IN_EDGE_EXONS  # and disttoblock > abs(transcript_edge - read_edge)
         else:
-            return read_edge - unique_bound >= REQ_BP_ALIGNED_IN_EDGE_EXONS and disttoblock > abs(transcript_edge - read_edge)
+            return read_edge - unique_bound >= REQ_BP_ALIGNED_IN_EDGE_EXONS  # and disttoblock > abs(transcript_edge - read_edge)
     else:
         return disttoblock >= REQ_BP_ALIGNED_IN_EDGE_EXONS
 
@@ -192,7 +193,6 @@ def check_stringent(coveredpos, exonpos, tlen, blockstarts, blocksizes, trust_en
             unique_bound_right = transcript_to_unique_bounds[tname]['right']
         else:
             unique_bound_left, unique_bound_right = None, None
-
         return check_firstlastexon(first_blocksize, last_blocksize, read_start, read_end, tlen, trust_ends, unique_bound_left, unique_bound_right)
 
 
@@ -700,6 +700,8 @@ def run_count_sam_transcripts(*, output, mm2_cmd=None, sam='-', threads=4, quali
 
 
 if __name__ == '__main__':
+    # logger = logging.getLogger(__name__)
+    # logging.basicConfig(level=logging.DEBUG)
     args = parse_args()
     args = check_args(args)
     info = read_isoforms_bed(
