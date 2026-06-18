@@ -1162,11 +1162,12 @@ def calc_final_iso_support(read_ends_file, final_transcript_objs, trust_ends):
         gene_to_tot[gene][2] += 1
     return iso_to_counts, gene_to_tot
 
-def write_final_isoform_output(partition, args, final_transcript_objs, iso_to_counts, gene_to_tot, annots, genome):
+def write_final_isoform_output(partition, args, final_transcript_objs, iso_to_counts, gene_to_tot, annots, genome, generate_map):
     transcript_to_reads = {}
-    for line in open(partition.output_path('countsam.read.map.txt')):
-        iso, reads = line.split('\t', 1)
-        transcript_to_reads[iso] = reads
+    if generate_map:
+        for line in open(partition.output_path('countsam.read.map.txt')):
+            iso, reads = line.split('\t', 1)
+            transcript_to_reads[iso] = reads
 
     with open(partition.output_path('isoforms.bed'), 'w') as iso_fh, \
          open(partition.output_path('isoforms.fa'), 'w') as seq_fh, \
@@ -1192,7 +1193,8 @@ def write_final_isoform_output(partition, args, final_transcript_objs, iso_to_co
                 seq_fh.write('>' + isoform.name + '\n')
                 seq_fh.write(isoform.get_sequence(genome) + '\n')
                 counts_fh.write(f'{isoform.name}\t{iso_to_counts[tname][0]}\t{iso_to_counts[tname][1]}\n')
-                map_fh.write(f'{isoform.name}\t{transcript_to_reads[tname]}')
+                if generate_map:
+                    map_fh.write(f'{isoform.name}\t{transcript_to_reads[tname]}')
 
 
 def _run_region(*, partition, gtf_data, junction_corrector, args):
@@ -1274,7 +1276,7 @@ def _run_region(*, partition, gtf_data, junction_corrector, args):
                                           partition.output_path('firstpass.uniquebound.txt'))
         else:
             logging.info('no firstpass isoforms found')
-            generate_empty_intermediate_files(partition.file_prefix, ['.firstpass.fa', '.firstpass.bed', '.isoform.counts.txt', '.isoform.read.map.txt', '.isoform.ends.tsv'])
+            generate_empty_intermediate_files(partition.file_prefix, ['.firstpass.fa', '.firstpass.bed', '.isoform.counts.txt', '.countsam.read.map.txt', '.isoform.ends.tsv'])
 
         # FIXME this is messy, shouldn't have to reorganize like this
         final_transcript_objs = {}
@@ -1282,7 +1284,7 @@ def _run_region(*, partition, gtf_data, junction_corrector, args):
             final_transcript_objs[firstpass[og_key].name] = firstpass[og_key]
 
         iso_to_counts, gene_to_tot = calc_final_iso_support(partition.output_path('isoform.ends.tsv'), final_transcript_objs, args.trust_ends)
-        write_final_isoform_output(partition, args, final_transcript_objs, iso_to_counts, gene_to_tot, annots, genome)
+        write_final_isoform_output(partition, args, final_transcript_objs, iso_to_counts, gene_to_tot, annots, genome, args.generate_map)
         genome.close()
     else:
         generate_empty_intermediate_files(partition.file_prefix, ['.firstpass.bed', '.isoform.counts.txt', '.isoform.read.map.txt', '.isoforms.bed', '.isoforms.fa', '.firstpass.reallyunfiltered.bed', '.firstpass.unfiltered.bed'])
