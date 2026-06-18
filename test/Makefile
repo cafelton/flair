@@ -166,14 +166,6 @@ BASIC_COUNTS_MATRIX = $I/basic.counts_matrix_diffexp.tsv
 BASIC_DIFFSPLICE_MATRIX = $I/basic.counts_matrix_diffsplice.tsv
 BASIC_DIFFSPLICE_BED = $I/test-collapse-annot.isoforms.bed
 
-# # FIXME: recreate these files with transcriptome, and others below 
-# BASIC_ISOFORMS_FA = $E/test-collapse-annot.isoforms.fa
-BASIC_ISOFORMS_BED = $I/test-collapse-annot.isoforms.bed
-
-# # copy so *.fai does end up in expect directory
-# BASIC_ISOFORMS_OUT_FA = $O/test-collapse-annot.isoforms.fa
-# BASIC_ISOFORMS_OUT_FAI = $O/test-collapse-annot.isoforms.fa.fai
-
 TOME_OUT_FA = $O/test-transcriptome.isoforms.fa
 TOME_OUT_FAI = $O/test-transcriptome.isoforms.fa.fai
 
@@ -193,10 +185,7 @@ SEG1_READS_FQ = $I/seg1.cdna-ont.fastq
 SEG1_ANNOTATION = $I/seg1.gencodeV47.gtf
 SEG1_PROMOTER_REGIONS = $I/seg1.promoter-regions.bed
 
-# SEG1_ALIGN_BED = $E/test-align-seg1.bed
 SEG1_ALIGN_BAM = $O/test-align-seg1.bam
-# SEG1_ISOFORMS_FA = expected/test-collapse-seg1.isoforms.fa
-# SEG1_ISOFORMS_BED = expected/test-collapse-seg1.isoforms.bed
 
 ##
 # mutant splice site, BED is truth
@@ -400,7 +389,7 @@ test-diffsplice: mkdirs
 	$(call cmp_expect,$@/drimseq_es_A_v_B.tsv)
 
 test-diffsplice-cond: mkdirs
-	flair diffsplice -i $(BASIC_ISOFORMS_BED) -q $(BASIC_DIFFSPLICE_MATRIX) --test -o $O/$@ -of --conditionA A --conditionB B
+	flair diffsplice -i $(BASIC_DIFFSPLICE_BED) -q $(BASIC_DIFFSPLICE_MATRIX) --test -o $O/$@ -of --conditionA A --conditionB B
 	$(call cmp_expect_sort,test-diffsplice/diffsplice.alt3.events.quant.tsv)
 	$(call cmp_expect_sort,test-diffsplice/diffsplice.alt5.events.quant.tsv)
 	$(call cmp_expect,test-diffsplice/diffsplice.es.events.quant.tsv)
@@ -416,7 +405,7 @@ test-diffsplice-help: mkdirs
 bed-to-gtf-tests: test-bed-to-gtf test-bed-to-gtf-extracols
 
 test-bed-to-gtf : mkdirs
-	bed_to_gtf $(BASIC_ISOFORMS_BED) > $O/$@.gtf
+	bed_to_gtf $(BASIC_DIFFSPLICE_BED) > $O/$@.gtf
 	$(call cmp_expect,$@.gtf)
 
 test-bed-to-gtf-extracols : 
@@ -440,12 +429,13 @@ test-diff-iso-usage-help: mkdirs
 # ##
 # # plot isoform usage
 # ##
-plot-usage-tests: test-plot-usage-help
+plot-usage-tests: test-plot-usage test-plot-usage-help
 
-# test-plot-usage: mkdirs
-# 	plot_isoform_usage expected/test-predict-productivity.bed expected/test-collapse-annot.annotated_transcripts.alignment.counts ENSG00000133703.12 -o $O/$@
-# 	file $O/test-plot-usage_isoforms.png | grep 'PNG image data' >/dev/null
-# 	file $O/test-plot-usage_usage.png | grep 'PNG image data' >/dev/null
+# only works with quantify output run with with-gene
+test-plot-usage: mkdirs
+	plot_isoform_usage $(TOME_ISOFORM_BED) $E/test-quantify.counts.tsv FLG00000002 --min_reads 1 -o $O/$@
+	file $O/test-plot-usage_FLG00000002_usage.pdf | grep 'PDF document' >/dev/null
+	file $O/test-plot-usage_FLG00000002_isoforms.pdf | grep 'PDF document' >/dev/null
 
 test-plot-usage-help: mkdirs
 	plot_isoform_usage --help > $O/$@.out

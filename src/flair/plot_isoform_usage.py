@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import os
 import argparse
+from flair.pycbio.hgdata.bed import BedReader
+from flair.flair_bed import FlairBed
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import numpy as np  # noqa: E402
 import matplotlib  # noqa: E402
@@ -8,7 +10,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import matplotlib.patches as mplpatches  # noqa: E402
 from flair import FlairInputDataError  # noqa: E402
-
 
 def parse_args():
     desc = '''The script will produce two images, one of the isoform models and another of the usage proportions.
@@ -42,46 +43,23 @@ gray = "xkcd:greyish"
 reverse_complement = {'C': 'G', 'G': 'C', 'A': 'T', 'T': 'A'}
 
 
-def parse_bed(bedfh, *, names=False, keepiso=set()):  # noqa: C901 - FIXME: reduce complexity
+def parse_bed(bedfile, *, names=False, keepiso=set()):  # noqa: C901 - FIXME: reduce complexity
     info = []
     usednames = []
     lowbound, upbound = 1e9, 0
-    # FIXME: use BedReader
-    for line in bedfh:
-        line = line.rstrip().split('\t')
-        name, start, end = line[3], int(line[1]), int(line[2])
-        blocksizes = [int(n) for n in line[10].split(',')[:-1]]
-        blockstarts = [int(n) + start for n in line[11].split(',')[:-1]]
+    gene_strand = None
+    for bed in BedReader(bedfile, bedClass=FlairBed):
+        blocksizes = [x.end - x.start for x in bed.blocks]
+        blockstarts = [x.start for x in bed.blocks]
 
-        if '_' in name[-4:]:  # for isoforms with productivity appended to the name
-            flag = name[name.rfind('_') + 1:]
-            if flag not in ['PRO', 'PTC']:
-                flag = 'Z' + flag  # ngo and nstop are alphabetically after pro and ptc
-            name = name[:name.rfind('_')]
-        elif '_PTC' in name:
-            flag = 'PTC'
-            name = name.replace('_PTC', '')
-        elif '_PRO' in name:
-            flag = 'PRO'
-            name = name.replace('_PRO', '')
-        elif '_NST' in name:
-            flag = 'Z'
-            name = name.replace('_NST', '')
-        elif '_NGO' in name:
-            flag = 'Z'
-            name = name.replace('_NGO', '')
-
-        else:
-            flag = 'PRO'
-
-        if name not in keepiso and name[:name.rfind('_')] not in keepiso:
+        if bed.name not in keepiso:
             continue
 
-        strand = line[5]
-        lowbound = min(lowbound, start)
-        upbound = max(upbound, end)
-        info += [[blocksizes, blockstarts, keepiso[name], flag, name]]  # exon sizes, exon starts, color, prod, iso
-        usednames += [name]
+        gene_strand = bed.strand
+        lowbound = min(lowbound, bed.chromStart)
+        upbound = max(upbound, bed.chromEnd)
+        info += [[blocksizes, blockstarts, keepiso[bed.name], bed.productivity, bed.name]]  # exon sizes, exon starts, color, prod, iso
+        usednames += [bed.name]
     upbound += 100  # padding up and downstream of isoforms
     lowbound -= 100
     for i in range(len(info)):
@@ -91,7 +69,7 @@ def parse_bed(bedfh, *, names=False, keepiso=set()):  # noqa: C901 - FIXME: redu
         if names:
             return info, usednames
         else:
-            return info, lowbound, upbound, strand, usednames
+            return info, lowbound, upbound, gene_strand, usednames
     except NameError:
         raise NameError('Check that the gene name is present in the bed file')
     except Exception as e:
@@ -143,7 +121,7 @@ def plot_blocks(data, panel, names, iso_to_variant, upper, lower, strand, base_c
 
         for j in range(len(read)):  # plot isoform block
             line = read[j]
-            sizes, starts, color, flag, iso_name = line[0], line[1], line[2], line[3], line[4][:line[4].rfind('_')]
+            sizes, starts, color, flag, iso_name = line[0], line[1], line[2], line[3], line[4]
 
             iso_start = data[di][0 + j][1][0]
             iso_end = data[di][0 + j][1][-1] + data[di][0 + j][0][-1]
@@ -197,7 +175,6 @@ def plot_blocks(data, panel, names, iso_to_variant, upper, lower, strand, base_c
 
 def plot_isoform_usage(args):  # noqa: C901 - FIXME: reduce complexity
     args = parse_args()
-    bedfh = open(args.isoforms)
     counts_matrix = open(args.counts_matrix)
     if not args.o:
         args.o = args.gene_name
@@ -238,7 +215,7 @@ def plot_isoform_usage(args):  # noqa: C901 - FIXME: reduce complexity
             for i in range(len(sample_ids)):
                 totals[i] += counts[i]
             continue
-        proportions += [[line[0]] + counts + [sum(counts)]]
+        proportions += [[line[0].split('_')[0]] + counts + [sum(counts)]]
 
     colori = 0
     proportions = sorted(proportions, key=lambda x: x[-1], reverse=True)  # sort by expression
@@ -299,12 +276,14 @@ def plot_isoform_usage(args):  # noqa: C901 - FIXME: reduce complexity
     panel.set_ylim(0, 100)
     panel.set_ylabel('Percent Usage', fontsize=12)
     # plt.savefig(args.o+'_proportion.pdf', transparent=True, dpi=600)  # uncomment to output as pdf
-    plt.savefig(args.o + '_usage.png', dpi=600)
+    # plt.savefig(args.o + '_usage.png', dpi=600)
+    plt.savefig(f'{args.o}_{args.gene_name}_usage.pdf', transparent=True)
+    plt.figure()
 
     # plotting isoform structures
     panel = plt.axes([0.005, 0.015, .99, 0.97], frameon=True)  # annotation
 
-    isoforms, lower, upper, strand, names = parse_bed(bedfh, keepiso=keepiso)
+    isoforms, lower, upper, strand, names = parse_bed(args.isoforms, keepiso=keepiso)
     isoforms = sorted(isoforms, key=lambda x: x[3], reverse=True)  # sort by productivity
     packed = pack(isoforms, rev=False, tosort=False)
 
@@ -327,7 +306,7 @@ def plot_isoform_usage(args):  # noqa: C901 - FIXME: reduce complexity
     plot_blocks(packed, panel, names, iso_to_variant, upper, lower, strand, base_colors, l=1)
 
     # plt.savefig(args.o+'_bars.pdf', transparent=True, dpi=600)  # uncomment to output as pdf
-    plt.savefig(args.o + '_isoforms.png', dpi=600)
+    plt.savefig(f'{args.o}_{args.gene_name}_isoforms.pdf', transparent=True)
 
 
 def main():
