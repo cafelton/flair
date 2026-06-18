@@ -290,9 +290,9 @@ def label_bam_file(bamname, output_name, read_to_allele_group):
     pysam.index(output_name)
 
 def label_bam_files(bam, norm_bam, output, file_to_read_to_allele_group):
-    label_bam_file(bam, output + '.allelegroups.bam', file_to_read_to_allele_group['t'])
+    label_bam_file(bam, output + '.tumor.bam', file_to_read_to_allele_group['t'])
     if norm_bam is not None:
-        label_bam_file(norm_bam, output + '.normal.allelegroups.bam', file_to_read_to_allele_group['n'])
+        label_bam_file(norm_bam, output + '.normal.bam', file_to_read_to_allele_group['n'])
 
 def generate_new_vcf_header(in_vcf, norm_bam):
     with vcfpy.Reader.from_path(in_vcf) as reader:
@@ -373,7 +373,7 @@ def make_allele_group_label(phaseset, group, allele_group_count, allele_group_to
     allele_group_label = (phaseset, string.ascii_uppercase[allele_group_count])
     # identify if is somatic
     if norm_bam is not None and tot_reads_for_file['n'] < read_support:
-        allele_group_label += '-S'
+        allele_group_label = (allele_group_label[0], allele_group_label[1] + '-S')
     allele_group_count += 1
     return allele_group_count, allele_group_label
 
@@ -532,7 +532,7 @@ def getvariants():
 
     if args.annotate_bams:
         print('labeling bam files')
-        label_bam_files(args.bam, args.norm_bam, args.output, file_to_read_to_allele_group)
+        label_bam_files(args.bam, args.norm_bam, args.output + '.allelegroups', file_to_read_to_allele_group)
 
 
 if __name__ == "__main__":

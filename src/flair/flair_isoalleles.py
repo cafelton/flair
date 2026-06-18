@@ -422,7 +422,7 @@ def getvariants():
     write_aaseq_key(args.output, aaseq_to_id)
     if args.bam is not None:
         print('labeling bam files')
-        label_bam_files(args.bam, args.norm_bam, args.output, file_to_read_to_group)
+        label_bam_files(args.bam, args.norm_bam, args.output + '.isoalleles', file_to_read_to_group)
 
 
 if __name__ == "__main__":
