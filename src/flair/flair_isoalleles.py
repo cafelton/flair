@@ -4,7 +4,6 @@
 import argparse
 import pysam
 from copy import deepcopy
-from flair.flair_allelotyping import label_bam_files
 from flair.pycbio.hgdata.bed import BedReader
 from flair.flair_bed import FlairBed
 from flair.predictProductivity import translate_from_bed
@@ -62,6 +61,29 @@ def parse_args():
     if (args.iso_read_map_norm is not None and args.allele_read_map_norm is None) or (args.iso_read_map_norm is None and args.allele_read_map_norm is not None):
         parser.error('If providing data for a normal sample, please provide both the iso read map and the allele read map')
     return args
+
+def label_bam_file(bamname, output_name, read_to_allele_group):
+    with pysam.AlignmentFile(bamname, 'rb') as bam:
+        with pysam.AlignmentFile(output_name, 'wb', template=bam) as out:
+            c, d = 0, 0
+            for a in bam:
+                if a.is_mapped and not a.is_secondary and not a.is_supplementary:
+                    if a.query_name in read_to_allele_group:
+                        iso, ps, ag = read_to_allele_group[a.query_name]
+                        a.set_tag('PS', ps)
+                        a.set_tag('AG', iso + '|' + ag)
+
+                    else:
+                        c += 1
+                    d += 1
+                out.write(a)
+            print('unassigned reads:', c, '/', d)
+    pysam.index(output_name)
+
+def label_bam_files(bam, norm_bam, output, file_to_read_to_allele_group):
+    label_bam_file(bam, output + '.tumor.bam', file_to_read_to_allele_group['t'])
+    if norm_bam is not None:
+        label_bam_file(norm_bam, output + '.normal.bam', file_to_read_to_allele_group['n'])
 
 def get_bedisoform_info(bedisofile):
     isoforms = {}
@@ -382,7 +404,7 @@ def reorganize_iso_alleles(read_to_iso_allele, isoforms):
     for file_label, read in read_to_iso_allele:
         iso_allele = tuple(read_to_iso_allele[(file_label, read)])
         group_label = get_group_label(iso_allele)
-        file_to_read_to_group[file_label][read] = group_label
+        file_to_read_to_group[file_label][read] = tuple(group_label.split('|'))
         if iso_allele not in iso_allele_to_reads:
             iso_allele_to_reads[iso_allele] = {'t': [], 'n': []}
         iso_allele_to_reads[iso_allele][file_label].append(read)

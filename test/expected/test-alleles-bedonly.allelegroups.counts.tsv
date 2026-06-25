@@ -1,5 +1,5 @@
-#phase_set	allele_group	gene	tumor_counts
-1	A	FLG00000001	80
-1	B	FLG00000001	70
-2	A	FLG00000002	369
-2	B	FLG00000002	348
+#phase_set	allele_group	tumor_counts
+1	A	80
+1	B	70
+2	A	369
+2	B	348

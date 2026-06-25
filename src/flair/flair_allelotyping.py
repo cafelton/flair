@@ -58,14 +58,15 @@ def make_vizgraph(graph, readvarinfo_to_reads):
         c += 1
     for edge in graph.edges:
         vizgraph.edge(og_node_to_index[edge[0]], og_node_to_index[edge[1]])
-    vizgraph.render('ULC0515T-variants-graph-simpler_KRAS_060426.gv')
+    vizgraph.render('test-062326.gv')
 
 def combine_vcf_files(vcffilelist):
     vartoalt = {}
+    var_to_is_homo = {}
     for samplevcf in vcffilelist:
         for line in open(samplevcf):
             if line[0] != '#':
-                line = line.rstrip().split('\t')
+                line = line.rstrip('\n').split('\t')
                 if line[6] == 'PASS':
                     ref = line[3]
                     refinfo, alts = (line[0], int(line[1]) - 1), line[4].split(',')
@@ -73,7 +74,8 @@ def combine_vcf_files(vcffilelist):
                         vartoalt[refinfo] = set()
                     for alt in alts:
                         vartoalt[refinfo].add((ref, alt))
-    return vartoalt
+                        var_to_is_homo[(line[0], int(line[1]) - 1, ref, alt)] = line[9].split(':')[0]
+    return vartoalt, var_to_is_homo
 
 def reorganize_vars(vartoalt):
     chrom_to_region_to_vars = {}
@@ -148,10 +150,13 @@ def get_coverage_snvs_from_read(a, my_vars):
         if refpos in my_vars:
             for v in my_vars[refpos]:
                 my_vars[refpos][v][0] = 1
-            if base.islower():
-                vinfo = (base.upper(), a.query_sequence[querpos].upper())
-                if vinfo in my_vars[refpos]:
-                    my_vars[refpos][vinfo][1] = 1
+        if base.islower():
+            # allow 1bp of wiggle room for miscalled variants
+            for mypos in range(refpos - 2, refpos + 3):
+                if mypos in my_vars:
+                    for vinfo in my_vars[mypos]:
+                        if a.query_sequence[querpos].upper() == vinfo[1]:
+                            my_vars[mypos][vinfo][1] = 1
 
 def check_any_var_is_covered(my_vars):
     for pos in my_vars:
@@ -202,8 +207,9 @@ def add_edges_from_var_supersets(graph, readvarinfo_to_reads):
     # construct edges based on variant supersets
     for a in readvarinfo_to_reads:
         for b in readvarinfo_to_reads:
-            if a != b and len(set(a) - set(b)) == 0:
-                graph.add_edge(a, b)
+            if a != b:
+                if len(set(a) - set(b)) == 0:
+                    graph.add_edge(a, b)
 
 def simplify_remove_nodes_with_single_parent(graph, readvarinfo_to_reads):
     g2 = graph.copy()
@@ -257,14 +263,43 @@ def assign_support_to_terminal_nodes(graph, readvarinfo_to_reads, reads_lost, re
                 g2.remove_node(node)
     return g2
 
+def identify_overlapping_allele_groups(graph):
+    group_to_similar = {}
+    for group in graph.nodes:
+        group_to_similar[group] = []
+        for g2 in graph.nodes:
+            if g2 != group:
+                g2_dict = dict(g2)
+                agree, disagree = 0, 0
+                for var_index, is_var in group:
+                    if var_index in g2_dict:
+                        if g2_dict[var_index] == is_var:
+                            agree += 1
+                        else:
+                            disagree += 1
+                if agree > 0 and disagree == 0:
+                    group_to_similar[group].append(g2)
+    return group_to_similar
+
 def identify_final_allele_groups(graph, readvarinfo_to_reads):
+    # Needs to share variants with exactly one other set
+    group_to_similar = identify_overlapping_allele_groups(graph)
+
     allele_group_to_reads = {}
-    for node in graph.nodes:
-        allele_group_to_reads[node] = readvarinfo_to_reads[node]
+    for group in graph.nodes:
+        if len(group_to_similar[group]) == 1:
+            my_group = tuple(sorted(list(set(group) | set(group_to_similar[group][0]))))
+        else:
+            my_group = group
+        if my_group not in allele_group_to_reads:
+            allele_group_to_reads[my_group] = set()
+        allele_group_to_reads[my_group].update(readvarinfo_to_reads[group])
+
     return allele_group_to_reads
 
 
-def process_alleotype_graph(readvarinfo_to_reads, read_support, frac_support):
+def process_alleotype_graph(readvarinfo_to_reads, read_support, frac_support, gene_id, gene_chrom, var_info, var_to_is_homo):
+    # readvarinfo_to_reads = identify_simple_superset_support(readvarinfo_to_reads, gene_id, gene_chrom, var_info, var_to_is_homo)
     reads_lost = set()
     graph = nx.DiGraph()
     tot_gene_reads = add_nodes(graph, readvarinfo_to_reads)
@@ -273,12 +308,16 @@ def process_alleotype_graph(readvarinfo_to_reads, read_support, frac_support):
     graph = simplify_remove_nodes_with_single_parent(graph, readvarinfo_to_reads)
 
     graph = remove_low_support_terminal_nodes(graph, readvarinfo_to_reads, tot_gene_reads, reads_lost, False, read_support, frac_support)
+    make_vizgraph(graph, readvarinfo_to_reads)
     graph = assign_support_to_terminal_nodes(graph, readvarinfo_to_reads, reads_lost, remove_ambig=False)
 
     graph = remove_low_support_terminal_nodes(graph, readvarinfo_to_reads, tot_gene_reads, reads_lost, True, read_support, frac_support)
     graph = assign_support_to_terminal_nodes(graph, readvarinfo_to_reads, reads_lost, remove_ambig=True)
 
+    # if gene_id == 38:
+    #     make_vizgraph(graph, readvarinfo_to_reads)
     return identify_final_allele_groups(graph, readvarinfo_to_reads)
+
 
 def label_bam_file(bamname, output_name, read_to_allele_group):
     with pysam.AlignmentFile(bamname, 'rb') as bam:
@@ -325,7 +364,7 @@ def generate_new_vcf_header(in_vcf, norm_bam):
         new_header.samples = vcfpy.SamplesInfos(['tumor'])
     return new_header
 
-def combine_phase_sets(variant_to_allele_group_counts_info, file_to_read_to_allele_group):
+def get_node_pairs_to_shared_reads(file_to_read_to_allele_group):
     ps_graph, ps_ag_graph = nx.Graph(), nx.Graph()
     edge_to_reads = {}
     for file in file_to_read_to_allele_group:
@@ -340,8 +379,21 @@ def combine_phase_sets(variant_to_allele_group_counts_info, file_to_read_to_alle
                         if edgekey not in edge_to_reads:
                             edge_to_reads[edgekey] = set()
                         edge_to_reads[edgekey].add((file, read))
+    return ps_graph, ps_ag_graph, edge_to_reads
 
-    # split when node has two children that are the same PS
+def check_remove_node(ps_graph, ps_ag_graph, edge_to_reads, thisnode, nextnode, node_to_move_to):
+    ps_ag_graph.remove_edge(thisnode, nextnode)
+    if ps_graph.has_edge(thisnode[0], nextnode[0]):
+        ps_graph.remove_edge(thisnode[0], nextnode[0])
+    ps_ag_graph.add_edge(node_to_move_to, node_to_move_to)
+    edgekey = frozenset((node_to_move_to, node_to_move_to))
+    if edgekey not in edge_to_reads:
+        edge_to_reads[edgekey] = set()
+    edge_to_reads[edgekey].update(edge_to_reads[frozenset((thisnode, nextnode))])
+    edge_to_reads.pop(frozenset((thisnode, nextnode)))
+
+def split_when_node_paired_to_diff_alleles_same_ps(ps_graph, ps_ag_graph, edge_to_reads):
+    moved_edge_nodes = {}
     for node in ps_ag_graph:
         if len(list(ps_ag_graph.edges(node))) > 1:
             seen_to_counts = {}
@@ -351,46 +403,88 @@ def combine_phase_sets(variant_to_allele_group_counts_info, file_to_read_to_alle
                 seen_to_counts[nextnode[0]] += 1
             for thisnode, nextnode in list(ps_ag_graph.edges(node)):
                 if seen_to_counts[nextnode[0]] > 1:
-                    ps_ag_graph.remove_edge(thisnode, nextnode)
-                    edgekey = frozenset((nextnode, nextnode))
-                    if edgekey not in edge_to_reads:
-                        edge_to_reads[edgekey] = set()
-                    edge_to_reads[edgekey].update(edge_to_reads[frozenset((thisnode, nextnode))])
-                    edge_to_reads.pop(frozenset((thisnode, nextnode)))
+                    check_remove_node(ps_graph, ps_ag_graph, edge_to_reads, thisnode, nextnode, nextnode)
+                    moved_edge_nodes[thisnode] = nextnode
+    return moved_edge_nodes
 
-    ps_ag_sets = []
-    for ps_ag_set in nx.connected_components(ps_ag_graph):
-        ps_ag_sets.append(ps_ag_set)
+def identify_connected_alleles(ps, ps_allele_groups, ps_ag_graph):
+    all_connected_ps = {}
+    for ag in ps_allele_groups:
+        for thisnode, nextnode in list(ps_ag_graph.edges((ps, ag))):
+            if nextnode[0] not in all_connected_ps:
+                all_connected_ps[nextnode[0]] = 0
+            all_connected_ps[nextnode[0]] += 1
+    return all_connected_ps
 
+def split_if_all_alleles_dont_connect_ps(ps_graph, ps_ag_graph, edge_to_reads, phaseset_to_allele_groups):
+    for ps in phaseset_to_allele_groups:
+        all_connected_ps = identify_connected_alleles(ps, phaseset_to_allele_groups[ps], ps_ag_graph)
+        bad_ps_conn = [k for k, v in all_connected_ps.items() if v < len(phaseset_to_allele_groups[ps]) and k != ps]
+        if len(bad_ps_conn) > 0:
+            print('removing', ps, bad_ps_conn, all_connected_ps)
+            for ps2 in bad_ps_conn:
+                if ps_graph.has_edge(ps, ps2):
+                    ps_graph.remove_edge(ps, ps2)
+            for ag in phaseset_to_allele_groups[ps]:
+                for thisnode, nextnode in list(ps_ag_graph.edges((ps, ag))):
+                    if nextnode[0] in bad_ps_conn:
+                        check_remove_node(ps_graph, ps_ag_graph, edge_to_reads, thisnode, nextnode, thisnode)
+
+def combine_allele_groups_between_ps(ps_count, ag_count, ps_ag_set, all_reads_in_ps_ag, old_to_new, new_phaseset_to_allele_groups, new_index_to_allele_group_info, new_file_to_read_to_allele_group):
+    new_ag = string.ascii_uppercase[ag_count]
+    # print(ps_count, new_ag, ps_ag_set)
+    for ps_ag in ps_ag_set:
+        old_to_new[ps_ag] = (ps_count, new_ag)
+    if ps_count not in new_phaseset_to_allele_groups:
+        new_phaseset_to_allele_groups[ps_count] = set()
+    new_phaseset_to_allele_groups[ps_count].add(new_ag)
+    new_index_to_allele_group_info[(ps_count, new_ag)] = {'t': set(), 'n': set()}
+    for file, read in all_reads_in_ps_ag:
+        if read not in new_file_to_read_to_allele_group[file]:
+            new_file_to_read_to_allele_group[file][read] = set()
+        new_file_to_read_to_allele_group[file][read].add((ps_count, new_ag))
+        new_index_to_allele_group_info[(ps_count, new_ag)][file].add(read)
+
+
+def check_combine_allele_groups_between_ps(ps_count, ag_count, ps_set, ps_ag_set, ps_ag_graph, edge_to_reads, old_to_new, new_phaseset_to_allele_groups, new_index_to_allele_group_info, new_file_to_read_to_allele_group):
+    if len(ps_set & set([x[0] for x in ps_ag_set])) > 0:
+        all_reads_in_ps_ag = set()
+        for edge in list(ps_ag_graph.edges(ps_ag_set)):
+            all_reads_in_ps_ag.update(edge_to_reads[frozenset(edge)])
+        if len(all_reads_in_ps_ag) > 0:
+            combine_allele_groups_between_ps(ps_count, ag_count, ps_ag_set, all_reads_in_ps_ag, old_to_new, new_phaseset_to_allele_groups, new_index_to_allele_group_info, new_file_to_read_to_allele_group)
+            ag_count += 1
+    return ag_count
+
+def combine_phase_sets_in_graph(ps_graph, ps_ag_graph, edge_to_reads):
+    ps_ag_sets = list(nx.connected_components(ps_ag_graph))
     new_file_to_read_to_allele_group = {'t': {}, 'n': {}}
     old_to_new = {}
     new_phaseset_to_allele_groups = {}
     new_index_to_allele_group_info = {}
-
     ps_count = 1
     for ps_set in nx.connected_components(ps_graph):
         ag_count = 0
         for ps_ag_set in ps_ag_sets:
-            if len(ps_set & set([x[0] for x in ps_ag_set])) > 0:
-                all_reads_in_ps_ag = set()
-                for edge in list(ps_ag_graph.edges(ps_ag_set)):
-                    all_reads_in_ps_ag.update(edge_to_reads[frozenset(edge)])
-                if len(all_reads_in_ps_ag) > 0:
-                    new_ag = string.ascii_uppercase[ag_count]
-                    for ps_ag in ps_ag_set:
-                        old_to_new[ps_ag] = (ps_count, new_ag)
-                    if ps_count not in new_phaseset_to_allele_groups:
-                        new_phaseset_to_allele_groups[ps_count] = set()
-                    new_phaseset_to_allele_groups[ps_count].add(new_ag)
-                    new_index_to_allele_group_info[(ps_count, new_ag)] = {'t': set(), 'n': set()}
-                    for file, read in all_reads_in_ps_ag:
-                        if read not in new_file_to_read_to_allele_group[file]:
-                            new_file_to_read_to_allele_group[file][read] = set()
-                        new_file_to_read_to_allele_group[file][read].add((ps_count, new_ag))
-                        new_index_to_allele_group_info[(ps_count, new_ag)][file].add(read)
-                    ag_count += 1
+            ag_count = check_combine_allele_groups_between_ps(ps_count, ag_count, ps_set, ps_ag_set, ps_ag_graph, edge_to_reads, old_to_new, new_phaseset_to_allele_groups, new_index_to_allele_group_info, new_file_to_read_to_allele_group)
         if ag_count > 0:
             ps_count += 1
+    return new_file_to_read_to_allele_group, old_to_new, new_phaseset_to_allele_groups, new_index_to_allele_group_info
+
+def combine_phase_sets(variant_to_allele_group_counts_info, file_to_read_to_allele_group, phaseset_to_allele_groups):
+    ps_graph, ps_ag_graph, edge_to_reads = get_node_pairs_to_shared_reads(file_to_read_to_allele_group)
+    # split when node has two children that are the same PS
+    moved_edge_nodes = split_when_node_paired_to_diff_alleles_same_ps(ps_graph, ps_ag_graph, edge_to_reads)
+    # remove attachments when both haplotypes can't be equally combined
+    split_if_all_alleles_dont_connect_ps(ps_graph, ps_ag_graph, edge_to_reads, phaseset_to_allele_groups)
+    new_file_to_read_to_allele_group, old_to_new, new_phaseset_to_allele_groups, new_index_to_allele_group_info = combine_phase_sets_in_graph(ps_graph, ps_ag_graph, edge_to_reads)
+
+    for node in ps_ag_graph.nodes:
+        if node not in old_to_new:
+            if node in moved_edge_nodes:
+                old_to_new[node] = old_to_new[moved_edge_nodes[node]]
+            else:
+                print('issue with', node)
 
     for var in variant_to_allele_group_counts_info:
         new_ag = [old_to_new[x] for x in variant_to_allele_group_counts_info[var]['ag']]
@@ -498,8 +592,10 @@ def get_allele_group_info(allele_group_to_reads, phaseset_count, var_info, gene_
     for ps in phaseset_to_groups:
         allele_group_count = 0
         phaseset_to_allele_groups[ps] = set()
+        # print(', '.join(var_info))
         for group in phaseset_to_groups[ps]:
             allele_group_count, allele_group_label = make_allele_group_label(ps, group, allele_group_count, allele_group_to_reads, norm_bam, read_support)
+            # print(allele_group_label, group)
             phaseset_to_allele_groups[ps].add(allele_group_label[1])
             index_to_allele_group_info[allele_group_label] = {'chrom': gene_chrom, 'vars': var_info, 'has_vars': group, 't': set(), 'n': set()}
             # print('og', allele_group_label, len(allele_group_to_reads[group]))
@@ -582,56 +678,63 @@ def load_isoform_data(gtf, isoform_bed):
         gene_to_all_juncs[gene] = sorted(list(gene_to_all_juncs[gene]))
     return gene_to_all_exons, gene_to_all_juncs
 
-def combine_adjoining_genes(gene_to_all_exons, gene_to_all_juncs):
+def get_ordered_gene_regions(gene_to_all_exons):
     chrom_to_genes = {}
     for gene in gene_to_all_exons:
         chrom = list(gene_to_all_exons[gene])[0].chrom
+        strand = list(gene_to_all_exons[gene])[0].strand
         if chrom not in chrom_to_genes:
             chrom_to_genes[chrom] = []
         gene_start = min([x.start for x in gene_to_all_exons[gene]])
         gene_end = max([x.end for x in gene_to_all_exons[gene]])
-        chrom_to_genes[chrom].append((gene_start, gene_end, gene))
+        chrom_to_genes[chrom].append((gene_start, gene_end, gene, strand))
+    return chrom_to_genes
+
+def get_outer_gene_to_inner(chrom_to_genes):
+    big_gene_to_little_genes = {}
+    for chrom in chrom_to_genes:
+        big_gene_to_little_genes[chrom] = {}
+        for s, e, gene, strand in sorted(chrom_to_genes[chrom], key=lambda x: x[1] - x[0], reverse=True):  # sort by gene size
+            is_contained = False
+            for s2, e2, g2, std2 in big_gene_to_little_genes[chrom]:
+                if strand == std2 and s2 < s and e < e2:
+                    big_gene_to_little_genes[chrom][(s2, e2, g2, std2)].append((s, e, gene, strand))
+                    is_contained = True
+                    break
+            if not is_contained:
+                big_gene_to_little_genes[chrom][(s, e, gene, strand)] = [(s, e, gene, strand)]
+    return big_gene_to_little_genes
+
+def combine_gene_groups(chrom_to_genes, big_gene_to_little_genes, gene_to_all_exons, gene_to_all_juncs):
     new_group_to_exons = {}
     new_group_to_juncs = {}
     groupnum = 1
     for chrom in chrom_to_genes:
-        lastend, gene_group = -1, set()
-        for s, e, gene in sorted(chrom_to_genes[chrom]):
-            if s > lastend:
-                if len(gene_group) > 0:
-                    new_group_to_exons[groupnum] = set()
-                    new_group_to_juncs[groupnum] = set()
-                    for gene in gene_group:
-                        new_group_to_exons[groupnum].update(gene_to_all_exons[gene])
-                        new_group_to_juncs[groupnum].update(gene_to_all_juncs[gene])
-                    groupnum += 1
-                    gene_group = set()
-            if e > lastend:
-                lastend = e
-            gene_group.add(gene)
-        if len(gene_group) > 0:
+        for k, l in big_gene_to_little_genes[chrom].items():
             new_group_to_exons[groupnum] = set()
             new_group_to_juncs[groupnum] = set()
-            for gene in gene_group:
+            for s, e, gene, strand in l:
                 new_group_to_exons[groupnum].update(gene_to_all_exons[gene])
                 new_group_to_juncs[groupnum].update(gene_to_all_juncs[gene])
             groupnum += 1
     return new_group_to_exons, new_group_to_juncs
 
+def combine_gene_region_subsets(gene_to_all_exons, gene_to_all_juncs):
+    chrom_to_genes = get_ordered_gene_regions(gene_to_all_exons)
+    big_gene_to_little_genes = get_outer_gene_to_inner(chrom_to_genes)
+    new_group_to_exons, new_group_to_juncs = combine_gene_groups(chrom_to_genes, big_gene_to_little_genes, gene_to_all_exons, gene_to_all_juncs)
+    return new_group_to_exons, new_group_to_juncs
 
 def getvariants():
     args = parse_args()
     print('loading genes and variants')
     genome = pysam.FastaFile(args.genome)
     my_vcfs = [args.vcf, args.norm_vcf] if args.norm_vcf is not None else [args.vcf]
-    vartoalt = combine_vcf_files(my_vcfs)
+    vartoalt, var_to_is_homo = combine_vcf_files(my_vcfs)
     chrom_to_region_to_vars = reorganize_vars(vartoalt)
     gene_to_all_exons, gene_to_all_juncs = load_isoform_data(args.gtf, args.isoform_bed)
 
-    # NOTE: I thought that combining genes would allow better phasing (more continuity across genes). 
-    # Instead, it led to less phasing overall, so I'm keeping the genes as they are 
-    # and instead relying on combining phase sets later.
-    # gene_to_all_exons, gene_to_all_juncs = combine_adjoining_genes(gene_to_all_exons, gene_to_all_juncs)
+    gene_to_all_exons, gene_to_all_juncs = combine_gene_region_subsets(gene_to_all_exons, gene_to_all_juncs)
 
     gene_to_vars = get_gene_to_all_vars(gene_to_all_exons, chrom_to_region_to_vars)
     # tempdir = make_temp_dir(args.output)
@@ -651,7 +754,7 @@ def getvariants():
             my_vars = create_gene_vars_dict(gene_to_vars[gene_id])
             var_info, _ = simplify_gene_vars(my_vars)
             readvarinfo_to_reads = load_bam_files_for_region(args.bam, args.norm_bam, gene_chrom, gene_start, gene_end, my_vars, genome, gene_to_all_juncs[gene_id])
-            allele_group_to_reads = process_alleotype_graph(deepcopy(readvarinfo_to_reads), args.read_support, args.frac_support)
+            allele_group_to_reads = process_alleotype_graph(deepcopy(readvarinfo_to_reads), args.read_support, args.frac_support, gene_id, gene_chrom, var_info, var_to_is_homo)
 
             # don't report if there's only one final group
             # if len(allele_group_to_reads) > 1: allele_group_to_reads, phaseset_count, var_info, gene_id
@@ -662,7 +765,7 @@ def getvariants():
             get_variant_final_coverage(readvarinfo_to_reads, var_info, gene_chrom, variant_to_allele_group_counts_info)
 
     print('combining phase sets')
-    phaseset_to_allele_groups, index_to_allele_group_info, file_to_read_to_allele_group = combine_phase_sets(variant_to_allele_group_counts_info, file_to_read_to_allele_group)
+    phaseset_to_allele_groups, index_to_allele_group_info, file_to_read_to_allele_group = combine_phase_sets(variant_to_allele_group_counts_info, file_to_read_to_allele_group, phaseset_to_allele_groups)
 
     print('writing vcf file')
     new_header = generate_new_vcf_header(args.vcf, args.norm_bam)
