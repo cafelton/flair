@@ -381,19 +381,19 @@ def get_node_pairs_to_shared_reads(file_to_read_to_allele_group):
                         edge_to_reads[edgekey].add((file, read))
     return ps_graph, ps_ag_graph, edge_to_reads
 
-def check_remove_node(ps_graph, ps_ag_graph, edge_to_reads, thisnode, nextnode, node_to_move_to):
-    ps_ag_graph.remove_edge(thisnode, nextnode)
-    if ps_graph.has_edge(thisnode[0], nextnode[0]):
-        ps_graph.remove_edge(thisnode[0], nextnode[0])
+def check_remove_node(ps_graph, ps_ag_graph, edge_to_reads, moved_node, node_to_move_to, moved_edge_nodes):
+    ps_ag_graph.remove_edge(moved_node, node_to_move_to)
+    if ps_graph.has_edge(moved_node[0], node_to_move_to[0]):
+        ps_graph.remove_edge(moved_node[0], node_to_move_to[0])
     ps_ag_graph.add_edge(node_to_move_to, node_to_move_to)
     edgekey = frozenset((node_to_move_to, node_to_move_to))
     if edgekey not in edge_to_reads:
         edge_to_reads[edgekey] = set()
-    edge_to_reads[edgekey].update(edge_to_reads[frozenset((thisnode, nextnode))])
-    edge_to_reads.pop(frozenset((thisnode, nextnode)))
+    edge_to_reads[edgekey].update(edge_to_reads[frozenset((moved_node, node_to_move_to))])
+    edge_to_reads.pop(frozenset((moved_node, node_to_move_to)))
+    moved_edge_nodes[moved_node] = node_to_move_to
 
-def split_when_node_paired_to_diff_alleles_same_ps(ps_graph, ps_ag_graph, edge_to_reads):
-    moved_edge_nodes = {}
+def split_when_node_paired_to_diff_alleles_same_ps(ps_graph, ps_ag_graph, edge_to_reads, moved_edge_nodes):
     for node in ps_ag_graph:
         if len(list(ps_ag_graph.edges(node))) > 1:
             seen_to_counts = {}
@@ -403,9 +403,7 @@ def split_when_node_paired_to_diff_alleles_same_ps(ps_graph, ps_ag_graph, edge_t
                 seen_to_counts[nextnode[0]] += 1
             for thisnode, nextnode in list(ps_ag_graph.edges(node)):
                 if seen_to_counts[nextnode[0]] > 1:
-                    check_remove_node(ps_graph, ps_ag_graph, edge_to_reads, thisnode, nextnode, nextnode)
-                    moved_edge_nodes[thisnode] = nextnode
-    return moved_edge_nodes
+                    check_remove_node(ps_graph, ps_ag_graph, edge_to_reads, thisnode, nextnode, moved_edge_nodes)
 
 def identify_connected_alleles(ps, ps_allele_groups, ps_ag_graph):
     all_connected_ps = {}
@@ -416,7 +414,7 @@ def identify_connected_alleles(ps, ps_allele_groups, ps_ag_graph):
             all_connected_ps[nextnode[0]] += 1
     return all_connected_ps
 
-def split_if_all_alleles_dont_connect_ps(ps_graph, ps_ag_graph, edge_to_reads, phaseset_to_allele_groups):
+def split_if_all_alleles_dont_connect_ps(ps_graph, ps_ag_graph, edge_to_reads, phaseset_to_allele_groups, moved_edge_nodes):
     for ps in phaseset_to_allele_groups:
         all_connected_ps = identify_connected_alleles(ps, phaseset_to_allele_groups[ps], ps_ag_graph)
         bad_ps_conn = [k for k, v in all_connected_ps.items() if v < len(phaseset_to_allele_groups[ps]) and k != ps]
@@ -428,7 +426,7 @@ def split_if_all_alleles_dont_connect_ps(ps_graph, ps_ag_graph, edge_to_reads, p
             for ag in phaseset_to_allele_groups[ps]:
                 for thisnode, nextnode in list(ps_ag_graph.edges((ps, ag))):
                     if nextnode[0] in bad_ps_conn:
-                        check_remove_node(ps_graph, ps_ag_graph, edge_to_reads, thisnode, nextnode, thisnode)
+                        check_remove_node(ps_graph, ps_ag_graph, edge_to_reads, nextnode, thisnode, moved_edge_nodes)
 
 def combine_allele_groups_between_ps(ps_count, ag_count, ps_ag_set, all_reads_in_ps_ag, old_to_new, new_phaseset_to_allele_groups, new_index_to_allele_group_info, new_file_to_read_to_allele_group):
     new_ag = string.ascii_uppercase[ag_count]
@@ -473,10 +471,11 @@ def combine_phase_sets_in_graph(ps_graph, ps_ag_graph, edge_to_reads):
 
 def combine_phase_sets(variant_to_allele_group_counts_info, file_to_read_to_allele_group, phaseset_to_allele_groups):
     ps_graph, ps_ag_graph, edge_to_reads = get_node_pairs_to_shared_reads(file_to_read_to_allele_group)
+    moved_edge_nodes = {}
     # split when node has two children that are the same PS
-    moved_edge_nodes = split_when_node_paired_to_diff_alleles_same_ps(ps_graph, ps_ag_graph, edge_to_reads)
+    split_when_node_paired_to_diff_alleles_same_ps(ps_graph, ps_ag_graph, edge_to_reads, moved_edge_nodes)
     # remove attachments when both haplotypes can't be equally combined
-    split_if_all_alleles_dont_connect_ps(ps_graph, ps_ag_graph, edge_to_reads, phaseset_to_allele_groups)
+    split_if_all_alleles_dont_connect_ps(ps_graph, ps_ag_graph, edge_to_reads, phaseset_to_allele_groups, moved_edge_nodes)
     new_file_to_read_to_allele_group, old_to_new, new_phaseset_to_allele_groups, new_index_to_allele_group_info = combine_phase_sets_in_graph(ps_graph, ps_ag_graph, edge_to_reads)
 
     for node in ps_ag_graph.nodes:
