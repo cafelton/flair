@@ -6,16 +6,18 @@
 ##FILTER=<ID=sj,Description="too close to splice junction">
 ##FILTER=<ID=hp,Description="homopolymer region">
 ##FILTER=<ID=tr,Description="tandem repeat of adjacent sequence">
+##FILTER=<ID=dn,Description="dense repeat region, likely misalignment and/or low complexity region">
+##FILTER=<ID=lq,Description="variant is in a low quality region of supporting reads (near read ends or splice junctions)">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 ##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">
 ##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths for the ref and alt alleles in the order listed">
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SAMPLE
-chr12	25205728	.	CTT	C	100	hp;tr	.	GT:DP:AD	0/1:162:99,63
+chr12	25205728	.	CTT	C	100	hp	.	GT:DP:AD	0/1:162:99,63
 chr12	25206530	.	TA	T	100	PASS	.	GT:DP:AD	0/1:156:85,71
 chr12	25207515	.	C	CA	100	hp	.	GT:DP:AD	0/1:164:76,88
-chr12	25207515	.	C	CAA	100	hp;tr	.	GT:DP:AD	0/1:164:137,27
+chr12	25207515	.	C	CAA	100	hp	.	GT:DP:AD	0/1:164:137,27
 chr12	25208167	.	T	TA	100	hp	.	GT:DP:AD	0/1:162:107,55
-chr12	25208167	.	T	TAA	100	hp;tr	.	GT:DP:AD	0/1:162:139,23
+chr12	25208167	.	T	TAA	100	hp	.	GT:DP:AD	0/1:162:139,23
 chr12	25206055	.	TA	T	100	hp	.	GT:DP:AD	0/1:161:144,17
 chr12	25206055	.	T	TA	100	hp	.	GT:DP:AD	0/1:161:141,20
 chr12	25209167	.	A	AT	100	hp	.	GT:DP:AD	0/1:161:143,18
@@ -27,7 +29,7 @@ chr12	25208505	.	T	TA	100	hp	.	GT:DP:AD	0/1:165:140,25
 chr12	25208505	.	TA	T	100	hp	.	GT:DP:AD	0/1:165:143,22
 chr12	25209177	.	A	AT	100	hp	.	GT:DP:AD	0/1:160:142,18
 chr12	25205682	.	TG	T	100	hp	.	GT:DP:AD	0/1:162:143,19
-chr12	25206931	.	T	TA	100	hp	.	GT:DP:AD	0/1:158:137,21
+chr12	25206931	.	T	TA	100	hp	.	GT:DP:AD	0/1:164:143,21
 chr12	25206393	.	TA	T	100	hp	.	GT:DP:AD	0/1:159:143,16
 chr12	25206463	.	TC	T	100	hp	.	GT:DP:AD	0/1:158:140,18
 chr12	25209692	.	G	GA	100	hp	.	GT:DP:AD	0/1:160:144,16

@@ -27,8 +27,12 @@ def parse_args():
                         help='Minimum percentage of reads required to call indel (int 1-100, default=10)')
     parser.add_argument('--min_sj_dist', type=int, default=3,
                         help='Minimum number of basepairs an indel must be from a splice junction in the same read in order to be considered')
-    parser.add_argument('--min_read_end_dist', type=int, default=10,
+    parser.add_argument('--min_read_end_dist', type=int, default=6,
                         help='Minimum number of basepairs an indel must be from the end of the read in order to be considered')
+    parser.add_argument('--density_dist', type=int, default=20,
+                        help='distance from variant considered for density calculation')
+    parser.add_argument('--density_count', type=int, default=4,
+                        help='number of nearby variants required to be flagged as a dense region')
     parser.add_argument('--num_repeats_for_filtering', type=int, default=1,
                         help='Required number of repeats to flag indels in tandem repeat regions as sequencing errors. '
                         'Set this to 1 to remove all calls in tandem repeat regions, set it high if you are interested in getting calls for these regions.')
@@ -78,8 +82,15 @@ def add_covered_pos(cigar, alignstart, pos_to_cov, r_start, r_end):
             ref_pos += block[1]
     return introns, quer_pos
 
-def check_dist_from_ends(min_read_end_dist, quer_start, quer_end, read_length):
-    if quer_start >= min_read_end_dist and quer_end <= read_length - min_read_end_dist:
+# def check_dist_from_ends(min_read_end_dist, quer_start, quer_end, read_length):
+#     if quer_start >= min_read_end_dist and quer_end <= read_length - min_read_end_dist:
+#         return True
+#     return False
+
+def check_dist_from_ends(min_read_end_dist, ref_start, ref_end, align_start, align_end):
+    # NOTE: after testing, the distance from the end of the alignment tends to be more important than the distance from the actual read ends
+    # it's not about the quality of the terminal read bases, it's about the quality of the end portion of the alignment (frequently it's about the combo of both)
+    if ref_start >= align_start + min_read_end_dist and ref_end <= align_end - min_read_end_dist:
         return True
     return False
 
@@ -98,9 +109,9 @@ def add_var_to_dict(pos_to_var, ref_pos, indel_key, flagged_bad):
     if flagged_bad:
         pos_to_var[ref_pos][indel_key][1] += 1
 
-def add_indel_info(cigar, alignstart, region, readseq, genome, introns, read_length, min_read_end_dist, min_sj_dist, pos_to_var):
+def add_indel_info(cigar, align_start, align_end, region, readseq, genome, introns, read_length, min_read_end_dist, min_sj_dist, pos_to_var):
     chrom, r_start, r_end = region
-    ref_pos, quer_pos = alignstart, 0
+    ref_pos, quer_pos = align_start, 0
     # here is where we can filter out indels that are too close to splice junctions or read ends
     for block in cigar:
         if block[0] in {0, 7, 8}:  # match, consumes both
@@ -109,14 +120,16 @@ def add_indel_info(cigar, alignstart, region, readseq, genome, introns, read_len
         elif block[0] in {1, 4}:  # consumes query ###1 is insertion
             if block[0] == 1:  # insertion
                 if r_start <= ref_pos <= r_end:
-                    flagged_bad = not (check_dist_from_ends(min_read_end_dist, quer_pos, quer_pos + block[1], read_length) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos, introns))
+                    # flagged_bad = not (check_dist_from_ends(min_read_end_dist, quer_pos, quer_pos + block[1], read_length) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos, introns))
+                    flagged_bad = not (check_dist_from_ends(min_read_end_dist, ref_pos, ref_pos, align_start, align_end) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos, introns))
                     insertion_seq = readseq[quer_pos - 1:quer_pos + block[1]].upper()
                     add_var_to_dict(pos_to_var, ref_pos, ('INS', insertion_seq[0], insertion_seq), flagged_bad)
             quer_pos += block[1]
         elif block[0] in {2, 3}:  # consumes reference ##2 is deletion
             if block[0] == 2:
                 if r_start <= ref_pos <= r_end:
-                    flagged_bad = not (check_dist_from_ends(min_read_end_dist, quer_pos, quer_pos + block[1], read_length) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos + block[1], introns))
+                    # flagged_bad = not (check_dist_from_ends(min_read_end_dist, quer_pos, quer_pos + block[1], read_length) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos + block[1], introns))
+                    flagged_bad = not (check_dist_from_ends(min_read_end_dist, ref_pos, ref_pos + block[1], align_start, align_end) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos + block[1], introns))
                     deletion_seq = genome.fetch(chrom, ref_pos - 1, ref_pos + block[1]).upper()
                     add_var_to_dict(pos_to_var, ref_pos, ('DEL', deletion_seq, deletion_seq[0]), flagged_bad)
             ref_pos += block[1]
@@ -185,11 +198,14 @@ def check_ss_dist_against_ref(pos, tot_cov, donor_counts, acceptor_counts, min_s
             return True
     return False
 
-def get_snvs_from_bam(aligned_bases, read_seq, chrom, r_start, r_end, genome, read_length, introns, pos_to_var, min_read_end_dist, min_sj_dist):
+def get_snvs_from_bam(aligned_bases, read_seq, chrom, align_start, align_end, r_start, r_end, genome, read_length, introns, pos_to_var, min_read_end_dist, min_sj_dist):
     for quer_pos, ref_pos, base in aligned_bases:
         if base.islower():
             if r_start <= ref_pos <= r_end:
-                flagged_bad = not (check_dist_from_ends(min_read_end_dist, quer_pos, quer_pos, read_length) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos, introns))
+                # if 48259096 < ref_pos < 48259135:
+                #     print(ref_pos, quer_pos, quer_offset, read_length, ref_end, read_length - quer_pos, read_length - (quer_pos + quer_offset), ref_end - ref_pos)
+                # flagged_bad = not (check_dist_from_ends(min_read_end_dist, quer_pos, quer_pos, read_length) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos, introns))
+                flagged_bad = not (check_dist_from_ends(min_read_end_dist, ref_pos, ref_pos, align_start, align_end) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos, introns))
                 snv_alt = read_seq[quer_pos].upper()
                 snv_ref = genome.fetch(chrom, ref_pos, ref_pos + 1).upper()
                 add_var_to_dict(pos_to_var, ref_pos + 1, ('SNV', snv_ref, snv_alt), flagged_bad)
@@ -205,60 +221,88 @@ def get_indels_from_bam(region, bam_file, genome, min_read_end_dist, min_sj_dist
                 introns, read_length = add_covered_pos(a.cigartuples, a.reference_start, pos_to_cov, region[1], region[2])
                 add_ss_to_ref(introns, donor_counts, acceptor_counts)
                 if identify_indels:
-                    add_indel_info(a.cigartuples, a.reference_start, region, a.query_sequence, genome, introns, read_length, min_read_end_dist, min_sj_dist, pos_to_var)
+                    add_indel_info(a.cigartuples, a.reference_start, a.reference_end, region, a.query_sequence, genome, introns, read_length, min_read_end_dist, min_sj_dist, pos_to_var)
                 if identify_snvs:
-                    get_snvs_from_bam(a.get_aligned_pairs(with_seq=True, matches_only=True), a.query_sequence, chrom, r_start, r_end, genome, read_length, introns, pos_to_var, min_read_end_dist, min_sj_dist)
+                    get_snvs_from_bam(a.get_aligned_pairs(with_seq=True, matches_only=True), a.query_sequence, chrom, a.reference_start, a.reference_end, r_start, r_end, genome, read_length, introns, pos_to_var, min_read_end_dist, min_sj_dist)
 
-            if c % 10000 == 0:
-                print(region[0], c, a.reference_start)
+            # if c % 10000 == 0:
+            #     print(region[0], c, a.reference_start)
     return pos_to_cov, pos_to_var, donor_counts, acceptor_counts
 
 def get_cov_for_var_pos(pos, pos_to_cov):
     # NOTE: account for insertion/deletion at edge of exon (introns have no coverage)
-    my_covs = []
+    tot_cov = []
     if pos in pos_to_cov:
-        my_covs.append(pos_to_cov[pos])
-    elif pos + 1 in pos_to_cov:
-        my_covs.append(pos_to_cov[pos + 1])
-    if len(my_covs) == 0:
-        raise ValueError('No coverage at indel locus')
-    tot_cov = max(my_covs, key=lambda x: x[1])
-    return tot_cov
+        tot_cov.append(pos_to_cov[pos])
+    if pos + 1 in pos_to_cov:
+        tot_cov.append(pos_to_cov[pos + 1])
+    if len(tot_cov) == 0:
+        # raise ValueError(f'No coverage at indel locus: {pos}')
+        # NOTE: this can happen if there is an insertion in the middle of an intron (strange but minimap does it for some reason)
+        return [0, 0]
+    elif len(tot_cov) == 1:
+        return tot_cov[0]
+    else:
+        if abs(tot_cov[0][1] - tot_cov[1][1]) > 5 or abs(tot_cov[0][1] - tot_cov[1][1]) / tot_cov[0][1] > 0.1:
+            return max(tot_cov, key=lambda x: x[1])
+        else:
+            return tot_cov[0]
 
-def get_indel_filter_labels(indel_type, indel_seq, tot_cov, indel_vaf, genome, chrom, pos, donor_counts, acceptor_counts, min_sj_dist, min_var_reads, min_vaf, num_repeats_for_filtering):
+def get_indel_filter_labels(indel_type, indel_seq, tot_cov, indel_reads, indel_vaf, genome, chrom, pos, donor_counts, acceptor_counts, min_sj_dist, min_var_reads, min_vaf, num_repeats_for_filtering):
     filters = []
-    if indel_type != 'SNV' and check_homopoly(indel_type, indel_seq, indel_vaf, genome, chrom, pos):
-        filters.append('hp')
-    if indel_type != 'SNV' and check_repeat(indel_type, indel_seq, genome, chrom, pos, num_repeats_for_filtering):
-        filters.append('tr')
+    if not (indel_reads >= min_var_reads and indel_vaf >= min_vaf):
+        filters.append('lq')
+    if indel_type != 'SNV':
+        if check_homopoly(indel_type, indel_seq, indel_vaf, genome, chrom, pos):
+            filters.append('hp')
+        elif check_repeat(indel_type, indel_seq, genome, chrom, pos, num_repeats_for_filtering):
+            filters.append('tr')
     if check_ss_dist_against_ref(pos, tot_cov, donor_counts, acceptor_counts, min_sj_dist, min_var_reads, min_vaf):
         filters.append('sj')
     return filters
 
-def filter_output_indel(out, pos, pos_var_info, indel_type, ref_seq, var_seq, tot_cov_nodel, tot_cov_withdel, genome, chrom, donor_counts, acceptor_counts, min_var_reads, min_vaf, min_sj_dist, num_repeats_for_filtering):
+def filter_output_indel(pos_to_var_filtered, pos, pos_var_info, indel_type, ref_seq, var_seq, tot_cov_nodel, tot_cov_withdel,
+                        genome, chrom, donor_counts, acceptor_counts, min_var_reads, min_vaf, min_sj_dist, num_repeats_for_filtering):
     tot_cov = tot_cov_nodel if indel_type == 'SNV' else tot_cov_withdel
     indel_reads, flagged_bad_reads = pos_var_info[(indel_type, ref_seq, var_seq)]
     indel_good_reads = indel_reads - flagged_bad_reads
-    indel_vaf = indel_good_reads / tot_cov
-    if indel_good_reads >= min_var_reads and indel_vaf >= min_vaf:
+    indel_vaf = indel_reads / tot_cov
+    indel_good_vaf = indel_good_reads / tot_cov
+    if indel_reads >= min_var_reads and indel_vaf >= min_vaf:
         filter_seq = var_seq if indel_type != 'DEL' else ref_seq
-        filters = get_indel_filter_labels(indel_type, filter_seq, tot_cov, indel_vaf, genome, chrom, pos, donor_counts, acceptor_counts, min_sj_dist, min_var_reads, min_vaf, num_repeats_for_filtering)
-        out_pos = pos
-        out.write('\t'.join([str(x) for x in (chrom, out_pos, indel_type, ref_seq, var_seq, indel_reads, tot_cov, ','.join(filters))]) + '\n')
+        filters = get_indel_filter_labels(indel_type, filter_seq, tot_cov, indel_good_reads, indel_good_vaf,
+                                          genome, chrom, pos, donor_counts, acceptor_counts, min_sj_dist, min_var_reads, min_vaf, num_repeats_for_filtering)
+        # out.write('\t'.join([str(x) for x in (chrom, pos, indel_type, ref_seq, var_seq, indel_reads, tot_cov, ','.join(filters))]) + '\n')
+        if pos not in pos_to_var_filtered:
+            pos_to_var_filtered[pos] = {}
+        pos_to_var_filtered[pos][(ref_seq, var_seq)] = [chrom, pos, indel_type, ref_seq, var_seq, indel_reads, tot_cov, filters]
 
-def process_var_pos(pos, out, pos_to_var, pos_to_cov, genome, chrom, donor_counts, acceptor_counts, min_cov, min_var_reads, min_vaf, min_sj_dist, num_repeats_for_filtering):
+def process_var_pos(pos, pos_to_var_filtered, pos_to_var, pos_to_cov, genome, chrom, donor_counts, acceptor_counts, min_cov, min_var_reads, min_vaf, min_sj_dist, num_repeats_for_filtering):
     tot_cov_nodel, tot_cov_withdel = get_cov_for_var_pos(pos, pos_to_cov)
     if tot_cov_withdel >= min_cov:
         for indel_type, ref_seq, var_seq in pos_to_var[pos]:
-            filter_output_indel(out, pos, pos_to_var[pos], indel_type, ref_seq, var_seq, tot_cov_nodel, tot_cov_withdel, genome, chrom, donor_counts, acceptor_counts, min_var_reads, min_vaf, min_sj_dist, num_repeats_for_filtering)
+            filter_output_indel(pos_to_var_filtered, pos, pos_to_var[pos], indel_type, ref_seq, var_seq, tot_cov_nodel, tot_cov_withdel,
+                                genome, chrom, donor_counts, acceptor_counts, min_var_reads, min_vaf, min_sj_dist, num_repeats_for_filtering)
 
 
 def process_reads_for_region(args):
-    temp_dir, bam_file, region, genome_file, min_cov, min_var_reads, min_vaf, min_read_end_dist, min_sj_dist, num_repeats_for_filtering, identify_indels, identify_snvs = args
+    temp_dir, bam_file, region, genome_file, min_cov, min_var_reads, min_vaf, min_read_end_dist, min_sj_dist, num_repeats_for_filtering, identify_indels, identify_snvs, density_dist, density_count = args
     with pysam.FastaFile(genome_file) as genome, open(temp_dir + '-'.join([str(x) for x in region]) + '.txt', 'w') as out:
         pos_to_cov, pos_to_var, donor_counts, acceptor_counts = get_indels_from_bam(region, bam_file, genome, min_read_end_dist, min_sj_dist, identify_indels, identify_snvs)
+        pos_to_var_filtered = {}
         for pos in pos_to_var:
-            process_var_pos(pos, out, pos_to_var, pos_to_cov, genome, region[0], donor_counts, acceptor_counts, min_cov, min_var_reads, min_vaf, min_sj_dist, num_repeats_for_filtering)
+            process_var_pos(pos, pos_to_var_filtered, pos_to_var, pos_to_cov, genome, region[0], donor_counts, acceptor_counts, min_cov, min_var_reads, min_vaf, min_sj_dist, num_repeats_for_filtering)
+        for pos in pos_to_var_filtered:
+            other_vars = 0
+            for p2 in range(pos - density_dist, pos + density_dist + 1):
+                if p2 != pos and p2 in pos_to_var_filtered:
+                    other_vars += len(pos_to_var_filtered[p2])
+            if other_vars >= density_count:
+                for k in pos_to_var_filtered[pos]:
+                    pos_to_var_filtered[pos][k][-1].append('dn')
+            for k in pos_to_var_filtered[pos]:
+                chrom, pos, indel_type, ref_seq, var_seq, indel_reads, tot_cov, filters = pos_to_var_filtered[pos][k]
+                out.write('\t'.join([str(x) for x in (chrom, pos, indel_type, ref_seq, var_seq, indel_reads, tot_cov, ','.join(filters))]) + '\n')
 
 def get_regions_from_bed(region_bed):
     regions = []
@@ -282,6 +326,8 @@ def generate_new_vcf_header(genome):
     new_header.add_line(vcfpy.FilterHeaderLine.from_mapping({'ID': 'sj', 'Description': 'too close to splice junction'}))
     new_header.add_line(vcfpy.FilterHeaderLine.from_mapping({'ID': 'hp', 'Description': 'homopolymer region'}))
     new_header.add_line(vcfpy.FilterHeaderLine.from_mapping({'ID': 'tr', 'Description': 'tandem repeat of adjacent sequence'}))
+    new_header.add_line(vcfpy.FilterHeaderLine.from_mapping({'ID': 'dn', 'Description': 'dense repeat region, likely misalignment and/or low complexity region'}))
+    new_header.add_line(vcfpy.FilterHeaderLine.from_mapping({'ID': 'lq', 'Description': 'variant is in a low quality region of supporting reads (near read ends or splice junctions)'}))
     new_header.add_line(vcfpy.FormatHeaderLine.from_mapping({'ID': 'GT', 'Number': 1, 'Type': 'String', 'Description': 'Genotype'}))
     new_header.add_line(vcfpy.FormatHeaderLine.from_mapping({'ID': 'DP', 'Number': 1, 'Type': 'Integer', 'Description': 'Read depth'}))
     new_header.add_line(vcfpy.FormatHeaderLine.from_mapping({'ID': 'AD', 'Number': 'R', 'Type': 'Integer', 'Description': 'Allelic depths for the ref and alt alleles in the order listed'}))
@@ -317,7 +363,9 @@ def get_indels():
 
     packed = []
     for region in regions:
-        packed.append((temp_dir, args.bam, region, args.genome, args.min_cov, args.min_var_reads, args.min_vaf_pct / 100, args.min_read_end_dist, args.min_sj_dist, args.num_repeats_for_filtering, args.identify_indels, args.identify_snvs))
+        packed.append((temp_dir, args.bam, region, args.genome, args.min_cov, args.min_var_reads, args.min_vaf_pct / 100,
+                       args.min_read_end_dist, args.min_sj_dist, args.num_repeats_for_filtering,
+                       args.identify_indels, args.identify_snvs, args.density_dist, args.density_count))
 
     if args.threads == 1:
         for p in packed:

@@ -70,11 +70,13 @@ def combine_vcf_files(vcffilelist):
                 if line[6] == 'PASS':
                     ref = line[3]
                     refinfo, alts = (line[0], int(line[1]) - 1), line[4].split(',')
-                    if refinfo not in vartoalt:
-                        vartoalt[refinfo] = set()
-                    for alt in alts:
-                        vartoalt[refinfo].add((ref, alt))
-                        var_to_is_homo[(line[0], int(line[1]) - 1, ref, alt)] = line[9].split(':')[0]
+                    if len(ref) == 1:  # not considering indels
+                        if refinfo not in vartoalt:
+                            vartoalt[refinfo] = set()
+                        for alt in alts:
+                            if len(alt) == 1:  # not considering indels
+                                vartoalt[refinfo].add((ref, alt))
+                                var_to_is_homo[(line[0], int(line[1]) - 1, ref, alt)] = line[9].split(':')[0]
     return vartoalt, var_to_is_homo
 
 def reorganize_vars(vartoalt):
@@ -308,7 +310,7 @@ def process_alleotype_graph(readvarinfo_to_reads, read_support, frac_support, ge
     graph = simplify_remove_nodes_with_single_parent(graph, readvarinfo_to_reads)
 
     graph = remove_low_support_terminal_nodes(graph, readvarinfo_to_reads, tot_gene_reads, reads_lost, False, read_support, frac_support)
-    make_vizgraph(graph, readvarinfo_to_reads)
+    # make_vizgraph(graph, readvarinfo_to_reads)
     graph = assign_support_to_terminal_nodes(graph, readvarinfo_to_reads, reads_lost, remove_ambig=False)
 
     graph = remove_low_support_terminal_nodes(graph, readvarinfo_to_reads, tot_gene_reads, reads_lost, True, read_support, frac_support)

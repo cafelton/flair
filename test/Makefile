@@ -574,7 +574,7 @@ ${ALIGN_LONGSHOT}: ${GENOME_FA} ${TEST_ALIGN_BAM}
 	longshot --force_overwrite --bam ${TEST_ALIGN_BAM} --ref ${GENOME_FA} --out ${ALIGN_LONGSHOT} --min_cov 3 --min_alt_count 3 --strand_bias_pvalue_cutoff 0.000001
 
 
-variants-tests:  test-alleles test-alleles-withbed test-alleles-bedonly test-isoalleles test-variantquant test-identifyvars-snvs test-identifyvars-indels
+variants-tests:  test-alleles test-alleles-withbed test-alleles-bedonly test-isoalleles test-variantquant test-identifyvars-snvs test-identifyvars-indels test-identifyvars-snvsindels
 
 # longshot is not currently include in the docker container
 have_longshot := $(shell which longshot >/dev/null 2>&1 && echo yes || echo no)
@@ -614,6 +614,10 @@ test-identifyvars-snvs: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM}
 
 test-identifyvars-indels: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM}
 	python3 ../src/flair/identify_vars.py --genome ${GENOME_FA} --bam ${TEST_ALIGN_BAM} --identify_snvs no --identify_indels yes --output $O/$@
+	$(call cmp_expect,$@.vcf)
+
+test-identifyvars-snvsindels: mkdirs ${GENOME_FA} ${TEST_ALIGN_BAM}
+	python3 ../src/flair/identify_vars.py --genome ${GENOME_FA} --bam ${TEST_ALIGN_BAM} --identify_snvs yes --identify_indels yes --output $O/$@
 	$(call cmp_expect,$@.vcf)
 
 ###
