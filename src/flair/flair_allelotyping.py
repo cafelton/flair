@@ -5,7 +5,7 @@ import pysam
 import logging
 from flair.gtf_io import load_gtf_to_gene_data, GtfExon
 from copy import deepcopy
-import graphviz
+# import graphviz
 from flair.pycbio.hgdata.bed import BedReader
 from flair.flair_bed import FlairBed
 import math
@@ -493,6 +493,18 @@ def combine_phase_sets(variant_to_allele_group_counts_info, file_to_read_to_alle
         variant_to_allele_group_counts_info[var]['ag'] = sorted(list(set(new_ag)))
     return new_phaseset_to_allele_groups, new_index_to_allele_group_info, new_file_to_read_to_allele_group
 
+def get_gt(tot_var, tot_cov, my_ag, ag_count):
+    is_defining_var = tot_var != tot_cov and len(my_ag) != len(ag_count)
+    if not is_defining_var:
+        gt = '1/1'
+    else:
+        allele_statuses = [0] * len(ag_count)
+        for allele in my_ag:
+            allele_statuses[ord(allele) - 65] = 1
+        gt = '|'.join([str(x) for x in allele_statuses])
+    return gt
+
+
 def write_vcf_file(output, new_header, variant_to_allele_group_counts_info, norm_bam, phaseset_to_allele_groups):
     # TODO: find phase sets with overlapping variants, remove those that are a subset of another phase set
     # if we want to get fancy, could also combine adjoining phase sets
@@ -518,14 +530,7 @@ def write_vcf_file(output, new_header, variant_to_allele_group_counts_info, norm
 
                 for ps in my_ps:
                     my_ag = sorted([x[1] for x in var_data['ag'] if x[0] == ps])
-                    is_defining_var = tot_var != tot_cov and len(my_ag) != len(phaseset_to_allele_groups[ps])
-                    if not is_defining_var:
-                        gt = '1/1'
-                    else:
-                        allele_statuses = [0] * len(phaseset_to_allele_groups[ps])
-                        for allele in my_ag:
-                            allele_statuses[ord(allele) - 65] = 1
-                        gt = '|'.join([str(x) for x in allele_statuses])
+                    gt = get_gt(tot_var, tot_cov, my_ag, phaseset_to_allele_groups[ps])
 
                     these_calls = [vcfpy.Call('tumor', {'GT': gt, 'PS': ps, 'DP': var_data['t_cov'], 'AD': [var_data['t_cov'] - var_data['t_var'], var_data['t_var']]})]
                     if norm_bam is not None:
