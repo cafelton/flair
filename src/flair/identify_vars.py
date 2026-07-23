@@ -82,11 +82,6 @@ def add_covered_pos(cigar, alignstart, pos_to_cov, r_start, r_end):
             ref_pos += block[1]
     return introns, quer_pos
 
-# def check_dist_from_ends(min_read_end_dist, quer_start, quer_end, read_length):
-#     if quer_start >= min_read_end_dist and quer_end <= read_length - min_read_end_dist:
-#         return True
-#     return False
-
 def check_dist_from_ends(min_read_end_dist, ref_start, ref_end, align_start, align_end):
     # NOTE: after testing, the distance from the end of the alignment tends to be more important than the distance from the actual read ends
     # it's not about the quality of the terminal read bases, it's about the quality of the end portion of the alignment (frequently it's about the combo of both)
@@ -120,7 +115,6 @@ def add_indel_info(cigar, align_start, align_end, region, readseq, genome, intro
         elif block[0] in {1, 4}:  # consumes query ###1 is insertion
             if block[0] == 1:  # insertion
                 if r_start <= ref_pos <= r_end:
-                    # flagged_bad = not (check_dist_from_ends(min_read_end_dist, quer_pos, quer_pos + block[1], read_length) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos, introns))
                     flagged_bad = not (check_dist_from_ends(min_read_end_dist, ref_pos, ref_pos, align_start, align_end) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos, introns))
                     insertion_seq = readseq[quer_pos - 1:quer_pos + block[1]].upper()
                     add_var_to_dict(pos_to_var, ref_pos, ('INS', insertion_seq[0], insertion_seq), flagged_bad)
@@ -128,7 +122,6 @@ def add_indel_info(cigar, align_start, align_end, region, readseq, genome, intro
         elif block[0] in {2, 3}:  # consumes reference ##2 is deletion
             if block[0] == 2:
                 if r_start <= ref_pos <= r_end:
-                    # flagged_bad = not (check_dist_from_ends(min_read_end_dist, quer_pos, quer_pos + block[1], read_length) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos + block[1], introns))
                     flagged_bad = not (check_dist_from_ends(min_read_end_dist, ref_pos, ref_pos + block[1], align_start, align_end) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos + block[1], introns))
                     deletion_seq = genome.fetch(chrom, ref_pos - 1, ref_pos + block[1]).upper()
                     add_var_to_dict(pos_to_var, ref_pos, ('DEL', deletion_seq, deletion_seq[0]), flagged_bad)
@@ -202,9 +195,6 @@ def get_snvs_from_bam(aligned_bases, read_seq, chrom, align_start, align_end, r_
     for quer_pos, ref_pos, base in aligned_bases:
         if base.islower():
             if r_start <= ref_pos <= r_end:
-                # if 48259096 < ref_pos < 48259135:
-                #     print(ref_pos, quer_pos, quer_offset, read_length, ref_end, read_length - quer_pos, read_length - (quer_pos + quer_offset), ref_end - ref_pos)
-                # flagged_bad = not (check_dist_from_ends(min_read_end_dist, quer_pos, quer_pos, read_length) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos, introns))
                 flagged_bad = not (check_dist_from_ends(min_read_end_dist, ref_pos, ref_pos, align_start, align_end) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos, introns))
                 snv_alt = read_seq[quer_pos].upper()
                 snv_ref = genome.fetch(chrom, ref_pos, ref_pos + 1).upper()
@@ -225,8 +215,8 @@ def get_indels_from_bam(region, bam_file, genome, min_read_end_dist, min_sj_dist
                 if identify_snvs:
                     get_snvs_from_bam(a.get_aligned_pairs(with_seq=True, matches_only=True), a.query_sequence, chrom, a.reference_start, a.reference_end, r_start, r_end, genome, read_length, introns, pos_to_var, min_read_end_dist, min_sj_dist)
 
-            # if c % 10000 == 0:
-            #     print(region[0], c, a.reference_start)
+            if c % 10000 == 0:
+                print(region[0], c, a.reference_start)
     return pos_to_cov, pos_to_var, donor_counts, acceptor_counts
 
 def get_cov_for_var_pos(pos, pos_to_cov):
