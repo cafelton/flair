@@ -47,18 +47,18 @@ def parse_args():
         parser.error('At least one of gtf and isoform_bed must be provided')
     return args
 
-def make_vizgraph(graph, readvarinfo_to_reads):
-    vizgraph = graphviz.Digraph()
-    c = 0
-    og_node_to_index = {}
-    for node in graph.nodes:
-        strnode = [f"{x[0]};{x[1]}" for x in node]
-        vizgraph.node(str(c), f'{", ".join(strnode)}: {len(readvarinfo_to_reads[node])}')
-        og_node_to_index[node] = str(c)
-        c += 1
-    for edge in graph.edges:
-        vizgraph.edge(og_node_to_index[edge[0]], og_node_to_index[edge[1]])
-    vizgraph.render('test-062326.gv')
+# def make_vizgraph(graph, readvarinfo_to_reads):
+#     vizgraph = graphviz.Digraph()
+#     c = 0
+#     og_node_to_index = {}
+#     for node in graph.nodes:
+#         strnode = [f"{x[0]};{x[1]}" for x in node]
+#         vizgraph.node(str(c), f'{", ".join(strnode)}: {len(readvarinfo_to_reads[node])}')
+#         og_node_to_index[node] = str(c)
+#         c += 1
+#     for edge in graph.edges:
+#         vizgraph.edge(og_node_to_index[edge[0]], og_node_to_index[edge[1]])
+#     vizgraph.render('test-062326.gv')
 
 def combine_vcf_files(vcffilelist):
     vartoalt = {}
@@ -334,6 +334,7 @@ def label_bam_file(bamname, output_name, read_to_allele_group):
                         ps_ag = list(read_to_allele_group[a.query_name])[0]
                         a.set_tag('PS', ps_ag[0])
                         a.set_tag('AG', ps_ag[1])
+                        a.set_tag('HP', ord(ps_ag[1]) - 65)
 
                     else:
                         c += 1
@@ -356,8 +357,8 @@ def generate_new_vcf_header(in_vcf, norm_bam):
     new_header.add_line(vcfpy.HeaderLine('source', 'FLAIR allelotyping'))
     new_header.add_line(vcfpy.InfoHeaderLine.from_mapping({'ID': 'PS', 'Number': 1, 'Type': 'Integer', 'Description': 'Phase set - variants within a phase set can be compared/phased'}))
     new_header.add_line(vcfpy.InfoHeaderLine.from_mapping({'ID': 'AG', 'Number': 'R', 'Type': 'String', 'Description': 'Allele group(s) - only compare these within a phase set'}))
-    new_header.add_line(vcfpy.InfoHeaderLine.from_mapping({'ID': 'DF', 'Number': 1, 'Type': 'Integer', 'Description': '1 means this is a variant that helps differentiate this phase set from others'}))
     new_header.add_line(vcfpy.FormatHeaderLine.from_mapping({'ID': 'GT', 'Number': 1, 'Type': 'String', 'Description': 'Genotype'}))
+    new_header.add_line(vcfpy.FormatHeaderLine.from_mapping({'ID': 'PS', 'Number': 1, 'Type': 'String', 'Description': 'Phase Set'}))
     new_header.add_line(vcfpy.FormatHeaderLine.from_mapping({'ID': 'DP', 'Number': 1, 'Type': 'Integer', 'Description': 'Read depth'}))
     new_header.add_line(vcfpy.FormatHeaderLine.from_mapping({'ID': 'AD', 'Number': 'R', 'Type': 'Integer', 'Description': 'Allelic depths for the ref and alt alleles in the order listed'}))
     if norm_bam is not None:
@@ -500,7 +501,7 @@ def write_vcf_file(output, new_header, variant_to_allele_group_counts_info, norm
         for ag in phaseset_to_allele_groups[ps]:
             allele_group_to_final_vars[(ps, ag)] = set()
     with vcfpy.Writer.from_path(output + '.allelegroups.vcf', new_header) as writer:
-        format_strings = ['GT', 'DP', 'AD']
+        format_strings = ['GT', 'PS', 'DP', 'AD']
         for (chrom, pos, ref, alt), var_data in variant_to_allele_group_counts_info.items():
             tot_cov = var_data['t_cov'] + var_data['n_cov']
             tot_var = var_data['t_var'] + var_data['n_var']
@@ -518,13 +519,18 @@ def write_vcf_file(output, new_header, variant_to_allele_group_counts_info, norm
                 for ps in my_ps:
                     my_ag = sorted([x[1] for x in var_data['ag'] if x[0] == ps])
                     is_defining_var = tot_var != tot_cov and len(my_ag) != len(phaseset_to_allele_groups[ps])
-                    gt = '0/1' if is_defining_var else '1/1'
-                    is_defining_var = 1 if is_defining_var else 0
+                    if not is_defining_var:
+                        gt = '1/1'
+                    else:
+                        allele_statuses = [0] * len(phaseset_to_allele_groups[ps])
+                        for allele in my_ag:
+                            allele_statuses[ord(allele) - 65] = 1
+                        gt = '|'.join([str(x) for x in allele_statuses])
 
-                    these_calls = [vcfpy.Call('tumor', {'GT': gt, 'DP': var_data['t_cov'], 'AD': [var_data['t_cov'] - var_data['t_var'], var_data['t_var']]})]
+                    these_calls = [vcfpy.Call('tumor', {'GT': gt, 'PS': ps, 'DP': var_data['t_cov'], 'AD': [var_data['t_cov'] - var_data['t_var'], var_data['t_var']]})]
                     if norm_bam is not None:
-                        these_calls.append(vcfpy.Call('normal', {'GT': gt, 'DP': var_data['n_cov'], 'AD': [var_data['n_cov'] - var_data['n_var'], var_data['n_var']]}))
-                    new_record = vcfpy.Record(chrom, int(pos) + 1, [], ref, [alt_desc], 100, ['PASS'], OrderedDict([('PS', ps), ('AG', my_ag), ('DF', is_defining_var)]), format_strings, these_calls)
+                        these_calls.append(vcfpy.Call('normal', {'GT': gt, 'PS': ps, 'DP': var_data['n_cov'], 'AD': [var_data['n_cov'] - var_data['n_var'], var_data['n_var']]}))
+                    new_record = vcfpy.Record(chrom, int(pos) + 1, [], ref, [alt_desc], 100, ['PASS'], OrderedDict([('PS', ps), ('AG', my_ag)]), format_strings, these_calls)
                     writer.write_record(new_record)
 
                 for allele_group in var_data['ag']:
