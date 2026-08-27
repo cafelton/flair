@@ -139,9 +139,9 @@ def read_isoforms_bed(*, isoforms, stringent=False, check_splice=False,  # noqa:
                 rightbounds = [int(x[1]) for x in bounds if x[0] == '1']
                 boundsdict = {'left': None, 'right': None}
                 if len(leftbounds) > 0:
-                    boundsdict['left'] = info.transcript_to_exons[name][0] - max(leftbounds)
+                    boundsdict['left'] = max(0, info.transcript_to_exons[name][0] - max(leftbounds))
                 if len(rightbounds) > 0:
-                    boundsdict['right'] = sum(info.transcript_to_exons[name][:-1]) + max(rightbounds)
+                    boundsdict['right'] = min(sum(info.transcript_to_exons[name]), sum(info.transcript_to_exons[name][:-1]) + max(rightbounds))
                 info.transcript_to_unique_bounds[name] = boundsdict
 
     return info
@@ -357,6 +357,7 @@ def identify_corrected_ends(exoninfo, startpos, endpos, gtstrand, tname, output_
         # clipping has already been flipped for strand prior to being passed into here
         left_clipping, right_clipping = query_clipping
     # Can only correct read ends if assigned to spliced transcript
+    
     if len(exoninfo) > 1:
         currpos = 0
         for i in range(len(exoninfo) - 1):
