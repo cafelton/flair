@@ -1185,9 +1185,9 @@ def write_final_isoform_output(partition, args, final_transcript_objs, iso_to_co
 
                 thickStart, thickEnd, productivity, aaseq = predict_prod_temp(isoform, annots.start_codon_count,
                                                                               annots.gene_to_cds_starts, annots.transcript_to_nmd_except, genome)
-                if thickStart > thickEnd:
+                if thickStart is not None and thickEnd is not None and thickStart > thickEnd:
                     logging.warning(f'{isoform.name} {isoform.chrom}:{isoform.start}-{isoform.end} has bad thickstart and thickEnd: {thickStart} {thickEnd}')
-                    thickStart, thickEnd = isoform.end, isoform.end
+                    thickStart, thickEnd = None, None
                 convert_to_flair_bed(isoform, thickStart=thickStart, thickEnd=thickEnd, read_support=iso_to_counts[tname][0],
                                      frac_support=my_frac_support, productivity=productivity, samples=(args.sample_name,), aaseq_id=aaseq).write(iso_fh)
                 seq_fh.write('>' + isoform.name + '\n')
