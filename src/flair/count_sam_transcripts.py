@@ -56,7 +56,7 @@ def parse_args():
                         help='text file with boundaries of unique sequence in isoforms that are a subset of other isoforms')
     parser.add_argument('--fusion_breakpoints',
                         help='''[OPTIONAL] fusion detection only - bed file containing locations of fusion breakpoints on the synthetic genome''')
-    ##FIXME
+    # FIXME
     parser.add_argument('--allow_paralogs', default=False, action='store_true',
                         help='NONFUNCTIONAL, REVISIT specify if want to allow reads to be assigned to multiple paralogs with equivalent alignment')
     parser.add_argument('--allow_UTR_indels', default=False, action='store_true',
@@ -356,12 +356,14 @@ def identify_corrected_ends(exoninfo, startpos, endpos, gtstrand, tname, output_
         # clipping has already been flipped for strand prior to being passed into here
         left_clipping, right_clipping = query_clipping
     # Can only correct read ends if assigned to spliced transcript
-    
+
     if len(exoninfo) > 1:
         currpos = 0
         for i in range(len(exoninfo) - 1):
             elen = exoninfo[i]
             currpos += elen
+            # startpos = read start on transcript
+            # if startpos is in last exon, does left_intron_index ever get set?
             if left_intron_index is None and startpos < currpos:
                 left_intron_index = i
                 left_dist = currpos - startpos
@@ -616,7 +618,7 @@ def write_output(args, transcripttoreads):
 
 def build_count_sam_transcripts_cmd(*, output, sam='-', threads=4, quality=0,   # noqa: C901 - linear function okay
                                     isoforms=None, stringent=False, check_splice=False,
-                                    trust_ends=False, generate_map=None, 
+                                    trust_ends=False, generate_map=None,
                                     fusion_dist=None, remove_internal_priming=False,
                                     permissive_last_exons=False, intprimingthreshold=12,
                                     intprimingfracAs=0.6, soft_clipping_buffer=50,
@@ -672,7 +674,7 @@ def build_count_sam_transcripts_cmd(*, output, sam='-', threads=4, quality=0,   
 
 def run_count_sam_transcripts(*, output, mm2_cmd=None, sam='-', threads=4, quality=0,
                               isoforms=None, stringent=False, check_splice=False,
-                              trust_ends=False, generate_map=None, 
+                              trust_ends=False, generate_map=None,
                               fusion_dist=None, remove_internal_priming=False,
                               permissive_last_exons=False, intprimingthreshold=12,
                               intprimingfracAs=0.6, soft_clipping_buffer=50,
@@ -684,7 +686,7 @@ def run_count_sam_transcripts(*, output, mm2_cmd=None, sam='-', threads=4, quali
     cmd = build_count_sam_transcripts_cmd(
         output=output, sam=sam, threads=threads, quality=quality,
         isoforms=isoforms, stringent=stringent, check_splice=check_splice,
-        trust_ends=trust_ends, generate_map=generate_map, 
+        trust_ends=trust_ends, generate_map=generate_map,
         fusion_dist=fusion_dist, remove_internal_priming=remove_internal_priming,
         permissive_last_exons=permissive_last_exons,
         intprimingthreshold=intprimingthreshold, intprimingfracAs=intprimingfracAs,
