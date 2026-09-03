@@ -287,20 +287,29 @@ def _parse_all_attributes(attrs_str: str, end_str: str, attr_re=_ALL_ATTR_RE) ->
 
     return attrs
 
-def _find_flair_attr_value(attrs_str: str, key: str):
+def extract_attr(larger_text, attr):
+    # \bgene_id\b matches exact key "gene_id"
+    # \s* matches optional whitespace
+    # "([^"]+)" captures everything inside the quotes
+    pattern = rf'\b{re.escape(attr)}\s*"([^"]+)"'
+    match = re.search(pattern, larger_text)
+    return match.group(1) if match else None
+
+def _find_flair_attr_value(attrs_str, key):
     """Find the quoted value of a single GTF attribute by key using str.find().
     Returns the value as a str or None if not found."""
-    alen = len(attrs_str)
-    idx = attrs_str.find(key)
-    if idx < 0:
-        return None
-    # skip whitespace to opening quote
-    val_idx = idx + len(key)
-    while val_idx < alen and attrs_str[val_idx] == ' ':
-        val_idx += 1
-    if val_idx >= alen or attrs_str[val_idx] != '"':
-        return None
-    val_start = val_idx + 1
+    # NOTE tried re and it slows down gtf loading too much
+    # pattern = rf'\b{re.escape(key)}\s*"([^"]+)"'
+    # match = re.search(pattern, attrs_str)
+    # return match.group(1) if match else None
+
+    if attrs_str[:len(key)] == key:
+        val_start = len(key) + 2
+    else:
+        idx = attrs_str.find(' ' + key + ' "')  # add leading whitespace to make more unambiguous
+        if idx < 0:
+            return None
+        val_start = idx + 3 + len(key)
     val_end = attrs_str.find('"', val_start)
     return attrs_str[val_start:val_end] if val_end >= 0 else None
 
@@ -320,7 +329,7 @@ def _parse_flair_attributes(attrs_str: str, record_type: str) -> Attrs:
         value = _find_flair_attr_value(attrs_str, key)
         if value is not None:
             attrs[key] = value
-    if record_type == 'transcript':
+    if record_type in TRANSCRIPT_FEATURES:  # == 'transcript':
         all_tags = [x.split('"')[0] for x in attrs_str.split('tag "')[1:]]
         attrs['tag'] = all_tags
     return attrs

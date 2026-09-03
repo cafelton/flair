@@ -51,6 +51,7 @@ def calc_transcript_rel_start_pos(annot_start, exon_sizes, my_exons, start_exon_
 
 def calc_stop_codon_pos(seq_from_start):
     stop_reached = False
+    stop_codon_pos = seq_from_start
     for stop_codon_pos in range(0, len(seq_from_start), 3):
         if seq_from_start[stop_codon_pos:stop_codon_pos + 3] in STOP_CODON_SEQS:
             stop_reached = True

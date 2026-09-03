@@ -37,8 +37,6 @@ def parse_args():
                         help='minimum quality threshold to consider if ends are to be trusted (0)')
     parser.add_argument('--generate_map',
                         help='''specify an output path for a txt file of which isoform each read is assigned to''')
-    parser.add_argument('--output_bam',
-                        help='''specify an output path for the bam file aligned to the transcriptome if desired''')
     parser.add_argument('--fusion_dist',
                         help='''minimium distance between separate read alignments on the same chromosome to be
             considered a fusion, otherwise no reads will be assumed to be fusions''')
@@ -58,8 +56,9 @@ def parse_args():
                         help='text file with boundaries of unique sequence in isoforms that are a subset of other isoforms')
     parser.add_argument('--fusion_breakpoints',
                         help='''[OPTIONAL] fusion detection only - bed file containing locations of fusion breakpoints on the synthetic genome''')
+    ##FIXME
     parser.add_argument('--allow_paralogs', default=False, action='store_true',
-                        help='specify if want to allow reads to be assigned to multiple paralogs with equivalent alignment')
+                        help='NONFUNCTIONAL, REVISIT specify if want to allow reads to be assigned to multiple paralogs with equivalent alignment')
     parser.add_argument('--allow_UTR_indels', default=False, action='store_true',
                         help='specify if want to allow reads to include indels in UTRs (more permissive for population variation + A to I editing)')
     parser.add_argument('--trimmedreads',
@@ -617,7 +616,7 @@ def write_output(args, transcripttoreads):
 
 def build_count_sam_transcripts_cmd(*, output, sam='-', threads=4, quality=0,   # noqa: C901 - linear function okay
                                     isoforms=None, stringent=False, check_splice=False,
-                                    trust_ends=False, generate_map=None, output_bam=None,
+                                    trust_ends=False, generate_map=None, 
                                     fusion_dist=None, remove_internal_priming=False,
                                     permissive_last_exons=False, intprimingthreshold=12,
                                     intprimingfracAs=0.6, soft_clipping_buffer=50,
@@ -642,8 +641,6 @@ def build_count_sam_transcripts_cmd(*, output, sam='-', threads=4, quality=0,   
         cmd.append('--trust_ends')
     if generate_map:
         cmd += ['--generate_map', str(generate_map)]
-    if output_bam:
-        cmd += ['--output_bam', str(output_bam)]
     if fusion_dist:
         cmd += ['--fusion_dist', str(fusion_dist)]
     if remove_internal_priming:
@@ -675,7 +672,7 @@ def build_count_sam_transcripts_cmd(*, output, sam='-', threads=4, quality=0,   
 
 def run_count_sam_transcripts(*, output, mm2_cmd=None, sam='-', threads=4, quality=0,
                               isoforms=None, stringent=False, check_splice=False,
-                              trust_ends=False, generate_map=None, output_bam=None,
+                              trust_ends=False, generate_map=None, 
                               fusion_dist=None, remove_internal_priming=False,
                               permissive_last_exons=False, intprimingthreshold=12,
                               intprimingfracAs=0.6, soft_clipping_buffer=50,
@@ -687,7 +684,7 @@ def run_count_sam_transcripts(*, output, mm2_cmd=None, sam='-', threads=4, quali
     cmd = build_count_sam_transcripts_cmd(
         output=output, sam=sam, threads=threads, quality=quality,
         isoforms=isoforms, stringent=stringent, check_splice=check_splice,
-        trust_ends=trust_ends, generate_map=generate_map, output_bam=output_bam,
+        trust_ends=trust_ends, generate_map=generate_map, 
         fusion_dist=fusion_dist, remove_internal_priming=remove_internal_priming,
         permissive_last_exons=permissive_last_exons,
         intprimingthreshold=intprimingthreshold, intprimingfracAs=intprimingfracAs,

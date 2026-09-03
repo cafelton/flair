@@ -82,11 +82,15 @@ class FlairBed(Bed):
 
     def toRow(self):
         row = super().toRow()
+        if self.frac_support is None:
+            str_frac_support = ''
+        else:
+            str_frac_support = str(round(self.frac_support, 4))
         row.extend([defaultIfNone(self.gene_id, ''),
                     defaultIfNone(self.ref_transcript_id, ''),
                     strArrayJoin(self.ref_gene_mappings),
                     defaultIfNone(self.read_support, ''),
-                    defaultIfNone(round(self.frac_support, 4), ''),
+                    str_frac_support,
                     defaultIfNone(self.productivity, ''),
                     self.transcript_class,
                     strArrayJoin(self.fused_genes),

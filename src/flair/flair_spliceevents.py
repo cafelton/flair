@@ -94,14 +94,14 @@ def get_annot_gene_hits(gene_to_exons, exons):
     gene_hits = []
     for annotgene in gene_to_exons:
         annotexons = gene_to_exons[annotgene]
-        if min((annotexons[-1][1], exons[-1][1])) > max(
-                (annotexons[0][0], exons[0][0])):  # there is overlap in the genes
+        if min((annotexons[-1][1], exons[-1].end)) > max(
+                (annotexons[0][0], exons[0].start)):  # there is overlap in the genes
             coveredpos = set()
-            for s, e in exons:
+            for exon in exons:
                 for ast, ae in annotexons:
-                    for p in range(max((ast, s)), min((ae, e))):
+                    for p in range(max((ast, exon.start)), min((ae, exon.end))):
                         coveredpos.add(p)
-            if len(coveredpos) > sum([x[1] - x[0] for x in exons]) * 0.5:
+            if len(coveredpos) > sum([x.end - x.start for x in exons]) * 0.5:
                 gene_hits.append([len(coveredpos), annotgene])
     return gene_hits
 
@@ -122,12 +122,12 @@ def get_juncs_to_gene(juncs, isoinfo, sjc_to_gene, junc_to_gene, gene_to_exons, 
             thisgene = sortedgenes[0][0]
         else:
             # look for exon overlap
-            mystart = max(x.start for x in isoinfo)
-            myend = min(x.end for x in isoinfo)
-            exons = [(mystart, juncs[0][0])] + [(juncs[i][1], juncs[i + 1][0]) for i in range(len(juncs) - 1)] + [
-                (juncs[-1][1], myend)]
+            # mystart = max(x.start for x in isoinfo.exons)
+            # myend = min(x.end for x in isoinfo.exons)
+            # exons = [(mystart, juncs[0][0])] + [(juncs[i][1], juncs[i + 1][0]) for i in range(len(juncs) - 1)] + [
+            #     (juncs[-1][1], myend)]
             # strand = isoinfo[0][2]  # not a super robust strand picking, assumes well stranded reads
-            gene_hits = get_annot_gene_hits(gene_to_exons, exons)
+            gene_hits = get_annot_gene_hits(gene_to_exons, isoinfo.exons)
             if len(gene_hits) > 0:
                 gene_hits.sort(reverse=True)
                 thisgene = gene_hits[0][1]
@@ -849,14 +849,15 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
                     outinfo = [f'{jname}_{ename}', event.eventtype, event.gene, get_junc_string(event.chrom, jinfo.inc_juncs),
                                get_junc_string(event.chrom, jinfo.exc_juncs), get_junc_string(event.chrom, jinfo.outer_juncs), get_junc_string(event.chrom, jinfo.inc_exon)]
                     juncpsi = write_counts_psi(outinfo, jinfo.samplecounts, event.totjunc, event.totoverlap, allsamples, outcounts, outpsijunc, outpsitot, event_support)
+                    
+                    # FIXME: use BED class
+                    for line in jinfo.bedlines:
+                        line[4] = round(med * 100)
+                        outbed.write('\t'.join([str(x) for x in line]) + '\n')
 
                     if outoutlier is not None:
                         vals_for_outlier = [x for x in juncpsi if x != 'NA']
                         med = median(vals_for_outlier)
-                        # FIXME: use BED class
-                        for line in jinfo.bedlines:
-                            line[4] = round(med * 100)
-                            outbed.write('\t'.join([str(x) for x in line]) + '\n')
 
                         if len(vals_for_outlier) >= 5:
                             dev = sps.iqr(vals_for_outlier) / 2

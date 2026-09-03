@@ -107,7 +107,7 @@ def get_args():
     parser.add_argument('--quality', default=1, type=int,
                         help='minimum mapping quality threshold to consider genomic alignments for defining transcripts')
     parser.add_argument('--allow_paralogs', default=False, action='store_true',
-                        help='specify if want to allow reads to be assigned to multiple paralogs with equivalent alignment')
+                        help='NONFUNCTIONAL, REVISIT specify if want to allow reads to be assigned to multiple paralogs with equivalent alignment')
 
     parser.add_argument('-t', '--threads', type=int, default=12,
                         help='number of threads to run with - related to parallel_mode')
@@ -129,9 +129,6 @@ def get_args():
                         help='''specify if you want to normalize transcript ends with similar terminal splice sites - only recommended if max_ends is 1''')
     parser.add_argument('--generate_map', default=False, action='store_true',
                         help='''specify this argument to generate a txt file of read-isoform assignments''')
-    parser.add_argument('--output_bam', default=False, action='store_true',
-                        help='output intermediate bams aligned to the transcriptome. '
-                             'Only works with --keep_intermediate, for debugging')
 
     args = parser.parse_args()
     args.parallel_mode = parallel_mode_parse(parser, args.parallel_mode)
@@ -139,6 +136,9 @@ def get_args():
     args.remove_internal_priming = False
     if args.output is None:
         args.output = args.sample_name
+
+    if args.allow_paralogs:
+        parser.error('Sorry, --allow_paralogs currently doesnt work, please try again without that option')
 
     if not os.path.exists(args.genome_aligned_bam):
         parser.error(f'Aligned reads file path does not exist: {args.genome_aligned_bam}')
@@ -184,12 +184,10 @@ def transcriptome_align_and_count(args, input_reads, align_ref_fasta, ref_bed, o
     trimmedreads = clipping_file or None
     generate_map = map_file or None
     output_endpos = output_name.split('.counts.txt')[0] + '.ends.tsv'  # if (args.output_endpos or is_annot) else None)
-    output_bam = (output_name.split('.counts.txt')[0] + '.bam'
-                  if args.output_bam else None)
     stringent = (not is_annot) and (not args.no_stringent)
     check_splice = not args.no_check_splice
     # annotated isoform bed file
-    isoforms = ref_bed if (check_splice or stringent or is_annot or args.fusion_breakpoints) else None
+    isoforms = ref_bed  # if (check_splice or stringent or is_annot or args.fusion_breakpoints) else None
     unique_bound_path = unique_bound if unique_bound and (not args.no_stringent or is_annot) else None
     intprimingthreshold = None
     intprimingfracAs = None
@@ -209,7 +207,6 @@ def transcriptome_align_and_count(args, input_reads, align_ref_fasta, ref_bed, o
         end_norm_dist=0,
         stringent=stringent,
         allow_UTR_indels=True,  # is_annot,
-        output_bam=output_bam,
         check_splice=check_splice,
         isoforms=isoforms,
         trust_ends=args.trust_ends,
@@ -607,7 +604,7 @@ def filter_ends_by_redundant_and_support(isoforms, sjc_support, se_support, max_
 
     if normalize_ends:  # Only by longest length
         isoforms.sort(key=lambda x: x.genomic_length, reverse=True)
-    else:  # First by read support, then by length
+    else:  # By read support and isoform length combined, will frequently choose the longer length
         isoforms.sort(key=lambda x: [x.num_reads * x.genomic_length], reverse=True)
 
     junc_support = sum([x.num_reads for x in isoforms])
@@ -1229,11 +1226,11 @@ def _run_region(*, partition, gtf_data, junction_corrector, args):
         # aligning to reference transcriptome, then identifying reads that match well to reference transcripts
         # with filter_transcriptome_align
         # logging.info('identifying good match to annot')
-        if not args.no_align_to_annot:
-            logging.info('aligning to transcriptome reference')
+        # if not args.no_align_to_annot:
+        #     logging.info('aligning to transcriptome reference')
         read_to_annot_transcript = identify_good_match_to_annot(args, partition.file_prefix, region.name, annots, genome)
 
-        logging.info('correcting and grouping reads, filtering isoforms')
+        # logging.info('correcting and grouping reads, filtering isoforms')
 
         # takes in bam file, for each read attempts to correct splice junctions (removes unsupported ones), then groups reads by junction chains
         # this also handles read strandedness if necessary
@@ -1262,7 +1259,7 @@ def _run_region(*, partition, gtf_data, junction_corrector, args):
             # also adjusts isoform strand, determines novel isoform and gene names
             # also normalizes transcript ends (temporarily extends ends so that transcript end alignment does not drive transcript assignment during transcriptome alignment)
             # writes out bed and fa files
-            logging.info('realigning to firstpass and getting final isoforms')
+            # logging.info('realigning to firstpass and getting final isoforms')
             write_firstpass(partition.file_prefix, region.name, firstpass, annots, genome, unique_bound=iso_to_unique_bound, normalize_ends=args.normalize_ends)
 
             # aligns to firstpass transcriptome, identifies best read -> isoform alignment for each read, then gets read counts per isoform
@@ -1275,7 +1272,7 @@ def _run_region(*, partition, gtf_data, junction_corrector, args):
                                           partition.output_path('reads.genomicclipping.txt'),
                                           partition.output_path('firstpass.uniquebound.txt'))
         else:
-            logging.info('no firstpass isoforms found')
+            # logging.info('no firstpass isoforms found')
             generate_empty_intermediate_files(partition.file_prefix, ['.firstpass.fa', '.firstpass.bed', '.isoform.counts.txt', '.countsam.read.map.txt', '.isoform.ends.tsv'])
 
         # FIXME this is messy, shouldn't have to reorganize like this
