@@ -849,16 +849,16 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
                     outinfo = [f'{jname}_{ename}', event.eventtype, event.gene, get_junc_string(event.chrom, jinfo.inc_juncs),
                                get_junc_string(event.chrom, jinfo.exc_juncs), get_junc_string(event.chrom, jinfo.outer_juncs), get_junc_string(event.chrom, jinfo.inc_exon)]
                     juncpsi = write_counts_psi(outinfo, jinfo.samplecounts, event.totjunc, event.totoverlap, allsamples, outcounts, outpsijunc, outpsitot, event_support)
-                    
+
+                    vals_for_outlier = [x for x in juncpsi if x != 'NA']
+                    med = median(vals_for_outlier)
+
                     # FIXME: use BED class
                     for line in jinfo.bedlines:
                         line[4] = round(med * 100)
                         outbed.write('\t'.join([str(x) for x in line]) + '\n')
 
                     if outoutlier is not None:
-                        vals_for_outlier = [x for x in juncpsi if x != 'NA']
-                        med = median(vals_for_outlier)
-
                         if len(vals_for_outlier) >= 5:
                             dev = sps.iqr(vals_for_outlier) / 2
                             for s in allsamples:
