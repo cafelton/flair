@@ -1102,7 +1102,7 @@ def write_transcript_ends_bed(args, temp_prefix, suffix, read_to_final_transcrip
                         score=0, strand=strand).write(ends_fh)
 
 def _iso_passes_support_filter(args, iso, gene, num_exons, iso_to_counts, gene_to_tot):
-    if iso not in iso_to_counts:
+    if iso not in iso_to_counts or gene_to_tot[gene][0] == 0 or gene_to_tot[gene][1] == 0:
         return False, 0
     else:
         count = iso_to_counts[iso][0]
