@@ -21,6 +21,7 @@ dependencies:
   - r-qqman
   - r-lazyeval
   - r-data.table
+  - ucsc-bedtobigbed
   - bioconductor-deseq2
   - bioconductor-drimseq
   - bioconductor-stager
