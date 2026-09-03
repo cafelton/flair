@@ -19,7 +19,7 @@ def parse_args():
     modules as they support it.
     """
 
-    desc = '''Run a FLAIR module.  This program is the main entry point
+    desc = '''Hi Alice!!! Run a FLAIR module.  This program is the main entry point
     for running FLAIR analysis.'''
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('--version', action='version', version='FLAIR ' + VERSION,
