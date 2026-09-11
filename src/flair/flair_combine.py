@@ -3,6 +3,7 @@
 import argparse
 import logging
 import pysam
+from statistics import mode
 from flair import FlairError
 from flair.bed_to_gtf import bed_to_gtf
 from flair.pycbio.hgdata.bed import BedReader
@@ -157,7 +158,9 @@ def get_new_gene_ids(bed_list_group, ref_gene_to_new, new_gene_to_og, og_flair_g
     curr_gene_ids = [(x[0].samples, x[0].gene_id) for x in bed_list_group]
     ref_gene_ids = list(set([x[0].ref_gene_mappings for x in bed_list_group if x[0].ref_gene_mappings != ()]))
     if len(ref_gene_ids) > 1:
-        raise FlairError("Matching isoforms from different samples have different genes - did you use consistent annotation files for all samples?")
+        # NOTE: This is not an ideal fix, but I think this issue needs to be fixed upstream in FLAIR transcriptome to better ensure that the same SJC always gets annotated as the same gene regardless of ends
+        ref_gene_ids = [mode([x[0].ref_gene_mappings for x in bed_list_group if x[0].ref_gene_mappings != ()])]
+        # raise FlairError("Matching isoforms from different samples have different genes - did you use consistent annotation files for all samples?")
     new_gene_id, gene_count = get_gene_id(ref_gene_ids, curr_gene_ids, ref_gene_to_new, new_gene_to_og, gene_count, og_flair_gene_to_new)
 
     curr_fused_genes = [(x[0].samples, x[0].fused_genes) for x in bed_list_group]
